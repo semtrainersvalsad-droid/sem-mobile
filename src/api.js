@@ -116,21 +116,32 @@ export async function sendQueued(id, name, args) {
   return { result: json.result, duplicate: !!json.duplicate };
 }
 
-/** Sign in. Returns the user, or throws with a message worth showing. */
+/**
+ * Sign in.
+ *
+ * Two things here were wrong on the first attempt and both failed in the same
+ * indistinguishable way:
+ *
+ *   The server routed this through clientCall, which refuses any call with no
+ *   token — including the one that obtains a token. Login could never succeed.
+ *   MobileApi.gs now calls the pre-auth functions directly, the same way
+ *   Index.html's _DIRECT_CALL_FNS has always done.
+ *
+ *   The token comes back as `sessionToken`, not `token`. Reading the wrong
+ *   field would have let a successful login appear to fail, or worse, appear
+ *   to succeed and then reject every subsequent call.
+ */
 export async function login(phone, password) {
-  // No token yet, so this goes out deliberately unauthenticated.
-  const res = await fetch(EXEC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({
-      action: 'mobile', token: '',
-      call: 'loginWithPhoneAndPassword', args: [String(phone).trim(), password]
-    })
+  const json = await send({
+    call: 'loginWithPhoneAndPassword',
+    args: [String(phone).trim(), password]
   });
-  const json = JSON.parse(await res.text());
   const r = json.result;
   if (!r || !r.success) throw new Error((r && r.error) || 'Sign-in failed.');
-  if (r.token) setToken(r.token);
+
+  const tok = r.sessionToken || r.token;
+  if (!tok) throw new Error('Signed in, but no session was returned. Tell Claude.');
+  setToken(tok);
   return r;
 }
 
