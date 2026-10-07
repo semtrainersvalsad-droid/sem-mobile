@@ -9,7 +9,7 @@
  * from a tender stage or a payment, which stay online-only.
  */
 import React from 'react';
-import { Card, Btn, Spin, Sheet, Chips, MT, PRIMARY, initials } from '../components/tiles.jsx';
+import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY, initials } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached, enqueue } from '../db.js';
 
@@ -51,7 +51,7 @@ export default function Leads({ user, online, onQueued }) {
         <button onClick={() => setAdding(true)} style={{
           background: PRIMARY, color: 'white', border: 'none', borderRadius: 12,
           padding: '0 1.05rem', fontWeight: 800, fontSize: '0.85rem', minHeight: 50, whiteSpace: 'nowrap'
-        }}><i className="fas fa-plus" /> New</button>
+        }}><Icon name="plus" /> New</button>
       </div>
 
       {stale && (
@@ -94,7 +94,7 @@ export default function Leads({ user, online, onQueued }) {
                   width: 46, height: 46, borderRadius: '50%', background: MT.teal.bg,
                   color: MT.teal.fg, display: 'grid', placeItems: 'center',
                   fontSize: '1rem', textDecoration: 'none', flexShrink: 0
-                }}><i className="fas fa-phone" /></a>
+                }}><Icon name="phone" /></a>
               )}
             </div>
           </Card>
@@ -205,7 +205,7 @@ function LeadAdd({ user, online, onQueued, onClose, onSaved }) {
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: '1.08rem', marginBottom: '0.85rem' }}>
-        <i className="fas fa-user-plus" style={{ color: PRIMARY, marginRight: '0.4rem' }} />New lead
+        <Icon name="user-plus" style={{ color: PRIMARY, marginRight: '0.4rem' }} />New lead
       </div>
       <input style={field} placeholder="Contact name" value={f.contactName}
              onChange={e => set('contactName', e.target.value)} />

@@ -142,7 +142,9 @@ export async function login(phone, password) {
   const tok = r.sessionToken || r.token;
   if (!tok) throw new Error('Signed in, but no session was returned. Tell Claude.');
   setToken(tok);
-  return r;
+  // The person is nested: { success, sessionToken, user:{ name, role, ... } }.
+  // Treating the envelope as the user is why the app greeted "there".
+  return r.user || r;
 }
 
 /**
@@ -156,6 +158,8 @@ export async function login(phone, password) {
  */
 export async function checkSession() {
   if (!getToken()) return null;
-  try { return await call('validateToken', getToken()); }
-  catch (e) { if (e instanceof NeedsLogin) return null; throw e; }
+  try {
+    const r = await call('validateToken', getToken());
+    return r && r.success ? (r.user || r) : null;
+  } catch (e) { if (e instanceof NeedsLogin) return null; throw e; }
 }

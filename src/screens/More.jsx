@@ -6,7 +6,7 @@
  * shows what it is, whether it failed, and why.
  */
 import React from 'react';
-import { Card, Btn, Spin, Chips, MT, PRIMARY, fmtL } from '../components/tiles.jsx';
+import { Icon, Card, Btn, Spin, Chips, MT, PRIMARY, fmtL } from '../components/tiles.jsx';
 import { call, EXEC_URL } from '../api.js';
 import { cached, outbox, outboxRemove } from '../db.js';
 
@@ -178,7 +178,7 @@ function About({ user }) {
       <Card>
         <a href={EXEC_URL} target="_blank" rel="noreferrer"
            style={{ color: PRIMARY, fontSize: '0.86rem', fontWeight: 700, textDecoration: 'none' }}>
-          <i className="fas fa-external-link-alt" /> Open the full ERP
+          <Icon name="external" /> Open the full ERP
         </a>
       </Card>
     </>

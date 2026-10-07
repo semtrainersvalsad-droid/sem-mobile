@@ -7,7 +7,7 @@
  * lying to the person holding it.
  */
 import React from 'react';
-import { Spin, StatusStrip, PRIMARY, initials } from './components/tiles.jsx';
+import { Icon, Spin, StatusStrip, PRIMARY, initials } from './components/tiles.jsx';
 import { checkSession, getToken, setToken, sendQueued, NeedsLogin, Offline } from './api.js';
 import { outbox, outboxSet, outboxRemove, pendingCount } from './db.js';
 import Login from './screens/Login.jsx';
@@ -36,8 +36,8 @@ export default function App() {
     (async () => {
       if (!getToken()) { setBooting(false); return; }
       try {
-        const r = await checkSession();
-        if (!dead) setUser(r && r.success ? r : null);
+        const r = await checkSession();   // already unwrapped to the user
+        if (!dead) setUser(r);
       } catch (e) {
         // Offline at startup with a stored token: let them in and work from
         // the cache. Refusing here would make the app useless in exactly the
@@ -125,7 +125,7 @@ export default function App() {
         <button onClick={() => { setToken(''); setUser(null); }} style={{
           background: 'rgba(255,255,255,0.16)', border: 'none', color: 'white',
           borderRadius: 12, width: 40, height: 40, fontSize: '0.9rem'
-        }} aria-label="Sign out"><i className="fas fa-sign-out-alt" /></button>
+        }} aria-label="Sign out"><Icon name="sign-out" /></button>
       </header>
 
       <StatusStrip offline={!online} pending={pending} />
@@ -147,7 +147,7 @@ export default function App() {
             flex: 1, background: 'none', border: 'none', padding: '0.6rem 0 0.5rem',
             color: tab === t.id ? PRIMARY : '#8A8F98', cursor: 'pointer'
           }}>
-            <i className={'fas fa-' + t.icon} style={{ fontSize: '1.05rem' }} />
+            <Icon name={t.icon} size={19} />
             <div style={{ fontSize: '0.64rem', fontWeight: 700, marginTop: 2 }}>{t.label}</div>
           </button>
         ))}

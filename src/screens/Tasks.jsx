@@ -5,7 +5,7 @@
  * record other people are acting on at the same moment.
  */
 import React from 'react';
-import { Card, Btn, Spin, Sheet, Chips, MT, PRIMARY } from '../components/tiles.jsx';
+import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached, enqueue } from '../db.js';
 
@@ -60,7 +60,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
         <button onClick={() => setAdding(true)} style={{
           background: PRIMARY, color: 'white', border: 'none', borderRadius: 12,
           padding: '0.55rem 1rem', fontWeight: 800, fontSize: '0.82rem'
-        }}><i className="fas fa-plus" /> New</button>
+        }}><Icon name="plus" /> New</button>
       </div>
 
       {stale && (
@@ -138,7 +138,7 @@ function TaskAdd({ user, isMgr, online, onQueued, onClose, onSaved }) {
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontWeight: 800, fontSize: '1.08rem', marginBottom: '0.85rem' }}>
-        <i className="fas fa-list-check" style={{ color: PRIMARY, marginRight: '0.4rem' }} />New task
+        <Icon name="list-check" style={{ color: PRIMARY, marginRight: '0.4rem' }} />New task
       </div>
       <textarea style={{ ...field, minHeight: 70 }} placeholder="What needs doing?"
                 value={f.task} onChange={e => set('task', e.target.value)} />
