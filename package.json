@@ -1,0 +1,20 @@
+{
+  "name": "sem-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "SEM Trainers mobile PWA. Static frontend; the Apps Script ERP is the backend.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/postbuild.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.1"
+  }
+}
