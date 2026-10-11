@@ -9,7 +9,7 @@
  * from a tender stage or a payment, which stay online-only.
  */
 import React from 'react';
-import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY, initials } from '../components/tiles.jsx';
+import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY, initials, StaleNote } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached, enqueue } from '../db.js';
 
@@ -26,6 +26,7 @@ const tempTile = t => {
 export default function Leads({ user, online, onQueued }) {
   const [leads, setLeads] = React.useState(null);
   const [stale, setStale] = React.useState(null);
+  const [staleErr, setStaleErr] = React.useState('');
   const [q, setQ] = React.useState('');
   const [sel, setSel] = React.useState(null);
   const [adding, setAdding] = React.useState(false);
@@ -34,6 +35,7 @@ export default function Leads({ user, online, onQueued }) {
     cached('leads', () => call('getLeads', {}), (v, m) => {
       setLeads(Array.isArray(v) ? v : []);
       setStale(m.fromCache ? m.at : null);
+      setStaleErr(m.error || '');
     }).catch(() => setLeads([]));
   }, []);
   React.useEffect(load, [load]);
@@ -54,11 +56,7 @@ export default function Leads({ user, online, onQueued }) {
         }}><Icon name="plus" /> New</button>
       </div>
 
-      {stale && (
-        <div style={{ fontSize: '0.72rem', color: '#8A6212', marginBottom: '0.5rem' }}>
-          Saved list from {new Date(stale).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      )}
+      <StaleNote at={stale} error={staleErr} onRetry={load} />
 
       {adding && <LeadAdd user={user} online={online} onQueued={onQueued}
                           onClose={() => setAdding(false)}

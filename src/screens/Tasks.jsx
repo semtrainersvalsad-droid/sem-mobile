@@ -5,7 +5,7 @@
  * record other people are acting on at the same moment.
  */
 import React from 'react';
-import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY } from '../components/tiles.jsx';
+import { Icon, Card, Btn, Spin, Sheet, Chips, MT, PRIMARY, shortDate, StaleNote } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached, enqueue } from '../db.js';
 
@@ -17,6 +17,7 @@ const field = {
 export default function Tasks({ user, isMgr, online, onQueued }) {
   const [tasks, setTasks] = React.useState(null);
   const [stale, setStale] = React.useState(null);
+  const [staleErr, setStaleErr] = React.useState('');
   const [showAll, setShowAll] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
   const [closing, setClosing] = React.useState({});
@@ -25,6 +26,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
     cached('tasks', () => call('getTasks', {}), (v, m) => {
       setTasks(Array.isArray(v) ? v : []);
       setStale(m.fromCache ? m.at : null);
+      setStaleErr(m.error || '');
     }).catch(() => setTasks([]));
   }, []);
   React.useEffect(load, [load]);
@@ -63,11 +65,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
         }}><Icon name="plus" /> New</button>
       </div>
 
-      {stale && (
-        <div style={{ fontSize: '0.72rem', color: '#8A6212', marginBottom: '0.5rem' }}>
-          Saved list from {new Date(stale).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      )}
+      <StaleNote at={stale} error={staleErr} onRetry={load} />
 
       {adding && <TaskAdd user={user} isMgr={isMgr} online={online} onQueued={onQueued}
                           onClose={() => setAdding(false)}
@@ -89,7 +87,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
                   {t.Task || t.Description || 'Task'}
                 </div>
                 <div style={{ fontSize: '0.73rem', color: late ? MT.red.sub : '#9AA0A6', marginTop: 2 }}>
-                  {due && !isNaN(due) ? due.toLocaleDateString('en-IN') : 'No due date'}
+                  {due && !isNaN(due) ? shortDate(due) : 'No due date'}
                   {late ? ' · overdue' : ''}{t.Priority ? ' · ' + t.Priority : ''}
                   {t.AssignedTo ? ' · ' + t.AssignedTo : ''}
                 </div>

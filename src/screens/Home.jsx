@@ -7,14 +7,16 @@
  * of what "slow and awkward" meant on the old mobile view.
  */
 import React from 'react';
-import { Tile, Card, Spin, greeting, fmtL } from '../components/tiles.jsx';
+import { Tile, Card, Spin, greeting, fmtL, shortDate, StaleNote } from '../components/tiles.jsx';
 import { batch } from '../api.js';
 import { cached } from '../db.js';
 
 export default function Home({ user, isMgr, online }) {
   const [data, setData] = React.useState(null);
   const [stale, setStale] = React.useState(null);
+  const [staleErr, setStaleErr] = React.useState('');
   const [err, setErr] = React.useState('');
+  const [nonce, setNonce] = React.useState(0);
 
   React.useEffect(() => {
     let dead = false;
@@ -32,10 +34,11 @@ export default function Home({ user, isMgr, online }) {
       if (dead) return;
       setData(value);
       setStale(meta.fromCache ? meta.at : null);
+      setStaleErr(meta.error || '');
     }).catch(e => { if (!dead) setErr(e.message || String(e)); });
 
     return () => { dead = true; };
-  }, [isMgr]);
+  }, [isMgr, nonce]);
 
   if (!data && !err) return <Spin />;
   if (!data && err) {
@@ -67,12 +70,7 @@ export default function Home({ user, isMgr, online }) {
         {String(user.name || '').split(' ')[0] || 'there'}
       </div>
 
-      {stale && (
-        <div style={{ fontSize: '0.72rem', color: '#8A6212', marginBottom: '0.6rem' }}>
-          Showing saved data from {new Date(stale).toLocaleTimeString('en-IN',
-            { hour: '2-digit', minute: '2-digit' })}
-        </div>
-      )}
+      <StaleNote at={stale} error={staleErr} onRetry={() => setNonce(n => n + 1)} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem', marginBottom: '0.9rem' }}>
         <Tile c="blue"  icon="list-check" value={open.length} label="Open tasks" />
@@ -97,7 +95,7 @@ export default function Home({ user, isMgr, online }) {
             {t.Task || t.Description || 'Task'}
           </div>
           <div style={{ fontSize: '0.74rem', color: '#6B7280', marginTop: '0.2rem' }}>
-            {t.DueDate ? new Date(t.DueDate).toLocaleDateString('en-IN') : 'No due date'}
+            {t.DueDate ? shortDate(t.DueDate) : 'No due date'}
             {t.Priority ? ' · ' + t.Priority : ''}
           </div>
         </Card>

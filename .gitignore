@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .DS_Store
+
+# dev-only audit harness, not shipped
+dev.html
+src/dev.jsx

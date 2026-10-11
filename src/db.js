@@ -89,8 +89,14 @@ export async function cached(key, fetcher, onData) {
     onData(fresh, { fromCache: false, at: Date.now() });
     return fresh;
   } catch (e) {
-    // Offline with a cached copy is a normal state, not a failure.
-    if (hit) return hit.value;
+    // A refresh that fails must SAY so. The first version swallowed the error
+    // whenever a cached copy existed, so every screen sat under a permanent
+    // amber "showing saved data" with no indication of why — which reads as a
+    // broken app and gives nobody anything to act on.
+    if (hit) {
+      onData(hit.value, { fromCache: true, at: hit.at, error: e.message || String(e) });
+      return hit.value;
+    }
     throw e;
   }
 }

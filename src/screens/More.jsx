@@ -136,7 +136,11 @@ function Stock() {
 function Quotes() {
   const [rows, setRows] = React.useState(null);
   React.useEffect(() => {
-    cached('quotes', () => call('getQuotations', {}), v => setRows(Array.isArray(v) ? v : []))
+    // getQuotations does not exist. The call is getQuotes and it answers
+    // { success, quotes: [...] }, not a bare array — so the old code showed an
+    // empty list and no error.
+    cached('quotes', () => call('getQuotes', {}),
+      v => setRows(v && Array.isArray(v.quotes) ? v.quotes : (Array.isArray(v) ? v : [])))
       .catch(() => setRows([]));
   }, []);
   if (rows === null) return <Spin />;

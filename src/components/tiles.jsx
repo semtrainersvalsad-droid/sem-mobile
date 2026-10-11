@@ -63,6 +63,27 @@ export function fmtL(n) {
   return '₹' + Math.round(v).toLocaleString('en-IN');
 }
 
+/**
+ * "Wed 8 Oct" rather than "8/10/2026".
+ *
+ * A numeric Indian date is ambiguous to read quickly and the year is almost
+ * never the thing you need. The weekday is, because "is this before or after
+ * the weekend" is the actual question when a deadline is three days out.
+ */
+export function shortDate(v) {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const t = new Date(d); t.setHours(0, 0, 0, 0);
+  const days = Math.round((t - now) / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days === -1) return 'Yesterday';
+  const s = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+  return days > 1 && days < 7 ? s + '  (' + days + 'd)' : s;
+}
+
 export function initials(name) {
   return String(name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 }
@@ -163,6 +184,41 @@ export function Chips({ options, value, onChange }) {
           }}>{o}</button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Why what you are looking at is not fresh, and what to do about it.
+ *
+ * The first version showed a permanent amber "showing saved data from 02:13 pm"
+ * on every screen with no reason and no way to act. That reads as a broken app.
+ * If the refresh simply has not finished, say nothing. If it failed, say so and
+ * offer the retry.
+ */
+export function StaleNote({ at, error, onRetry }) {
+  if (!at && !error) return null;
+  const when = at ? new Date(at).toLocaleTimeString('en-IN',
+    { hour: '2-digit', minute: '2-digit' }) : '';
+  return (
+    <div style={{
+      background: error ? MT.red.bg : MT.neutral.bg,
+      color: error ? MT.red.fg : MT.neutral.sub,
+      borderRadius: 10, padding: '0.5rem 0.7rem', marginBottom: '0.7rem',
+      fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '0.5rem'
+    }}>
+      <span style={{ flex: 1 }}>
+        {error
+          ? <>Could not refresh — showing {when}. <span style={{ opacity: 0.8 }}>{error}</span></>
+          : <>Showing saved data from {when}</>}
+      </span>
+      {onRetry && (
+        <button onClick={onRetry} style={{
+          background: 'rgba(0,0,0,0.08)', border: 'none', borderRadius: 8,
+          padding: '0.25rem 0.6rem', fontSize: '0.74rem', fontWeight: 700,
+          color: 'inherit', cursor: 'pointer', flexShrink: 0
+        }}>Retry</button>
+      )}
     </div>
   );
 }
