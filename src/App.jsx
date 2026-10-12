@@ -17,6 +17,7 @@ import Business from './screens/Business.jsx';
 import Leads from './screens/Leads.jsx';
 import Tasks from './screens/Tasks.jsx';
 import More from './screens/More.jsx';
+import Everything from './screens/Everything.jsx';
 
 /**
  * Managers get Business first; everyone else never sees it.
@@ -32,14 +33,14 @@ const TABS_MGR = [
   { id: 'home',     label: 'Home',     icon: 'house' },
   { id: 'leads',    label: 'Leads',    icon: 'user-plus' },
   { id: 'tasks',    label: 'Tasks',    icon: 'list-check' },
-  { id: 'more',     label: 'More',     icon: 'ellipsis' }
+  { id: 'all',      label: 'Everything', icon: 'grid' }
 ];
 
 const TABS_STAFF = [
   { id: 'home',   label: 'Home',   icon: 'house' },
   { id: 'leads',  label: 'Leads',  icon: 'user-plus' },
   { id: 'tasks',  label: 'Tasks',  icon: 'list-check' },
-  { id: 'more',   label: 'More',   icon: 'ellipsis' }
+  { id: 'all',    label: 'Everything', icon: 'grid' }
 ];
 
 export default function App() {
@@ -155,7 +156,7 @@ export default function App() {
         {active === 'home'     && <Home  user={user} isMgr={isMgr} online={online} onGoTab={setTab} />}
         {active === 'leads'    && <Leads user={user} online={online} onQueued={refreshPending} />}
         {active === 'tasks'    && <Tasks user={user} isMgr={isMgr} online={online} onQueued={refreshPending} />}
-        {active === 'more'     && <More  user={user} online={online} onDrain={drain} onQueued={refreshPending} />}
+        {active === 'all'      && <Everything user={user} online={online} onDrain={drain} onQueued={refreshPending} pending={pending} />}
       </main>
 
       <nav style={{
