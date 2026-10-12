@@ -17,18 +17,70 @@
 import React from 'react';
 import { T, R, money, SERIES, tick, fyMonthsElapsed } from '../theme.js';
 import { ChartHead, Blank, MonthBars, AgeBars, SplitBar, StackBar, Legend } from '../components/charts.jsx';
-import { Spin, StaleNote } from '../components/tiles.jsx';
+import { Spin, StaleNote, Sheet } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached } from '../db.js';
 
 const FIG = { fontVariantNumeric: 'tabular-nums' };
 
-function Card({ children, tone }) {
+/**
+ * A card, optionally one you can open.
+ *
+ * When `onOpen` is set the card gets a footer row naming what is behind it —
+ * "See all 47 who owe you" — rather than relying on the card simply looking
+ * tappable. The first thing anyone said about this screen was "I want to see
+ * who owes me the money, it shows me only the cumulative figure": the data
+ * was there, the way in was not, and an invisible tap target is the same as
+ * no tap target.
+ */
+function Card({ children, tone, onOpen, openLabel }) {
   const bg = tone === 'alert' ? '#2A1008' : tone === 'bad' ? T.redBg : T.card;
   return (
-    <div style={{ background: bg, borderRadius: R.card, padding: 15, marginBottom: 10 }}>
+    <div onClick={onOpen} style={{
+      background: bg, borderRadius: R.card, padding: 15, marginBottom: 10,
+      cursor: onOpen ? 'pointer' : 'default'
+    }}>
       {children}
+      {onOpen && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          marginTop: 12, paddingTop: 11, borderTop: '1px solid rgba(255,255,255,0.09)',
+          fontSize: 12, color: T.accent
+        }}>
+          <span>{openLabel}</span>
+          <span style={{ fontSize: 15, lineHeight: 1 }}>›</span>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** A list behind a card. One row per thing, the number on the right. */
+function DetailSheet({ title, sub, rows, onClose }) {
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontSize: 16, color: T.text, marginBottom: sub ? 3 : 12 }}>{title}</div>
+      {sub && <div style={{ fontSize: 11.5, color: T.sub, marginBottom: 12 }}>{sub}</div>}
+      {!rows.length && (
+        <div style={{ fontSize: 12.5, color: T.sub, padding: '10px 0' }}>Nothing to show.</div>
+      )}
+      {rows.map((r, i) => (
+        <div key={i} style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0',
+          borderBottom: i < rows.length - 1 ? '1px solid ' + T.line : 'none'
+        }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13, color: T.text, overflow: 'hidden',
+                          textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+            {r.meta && <div style={{ fontSize: 11, color: T.sub, marginTop: 1 }}>{r.meta}</div>}
+          </div>
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div style={{ fontSize: 13, color: T.text, ...FIG }}>{r.value}</div>
+            {r.tag && <div style={{ fontSize: 10.5, color: r.tagColor || T.sub, ...FIG }}>{r.tag}</div>}
+          </div>
+        </div>
+      ))}
+    </Sheet>
   );
 }
 
@@ -38,10 +90,14 @@ export default function Business({ online }) {
   const [staleErr, setStaleErr] = React.useState('');
   const [err, setErr] = React.useState('');
   const [nonce, setNonce] = React.useState(0);
+  const [sheet, setSheet] = React.useState(null);
 
   React.useEffect(() => {
     let dead = false;
-    cached('business', () => call('getMobileDashboard'), (v, m) => {
+    // The server caches this for ten minutes. A manual retry asks for a fresh
+    // build, because someone who taps Retry wants today's number, not the one
+    // from nine minutes ago that they are already looking at.
+    cached('business', () => call('getMobileDashboard', nonce > 0), (v, m) => {
       if (dead) return;
       setD(v);
       setStale(m.fromCache ? m.at : null);
@@ -70,6 +126,8 @@ export default function Business({ online }) {
 
   return (
     <>
+      {sheet && <DetailSheet {...sheet} onClose={() => setSheet(null)} />}
+
       <StaleNote at={stale} error={staleErr} onRetry={() => setNonce(n => n + 1)} />
 
       {/* ── Cash in ─────────────────────────────────────────────────────── */}
@@ -123,8 +181,22 @@ export default function Business({ online }) {
         const months = d.billed && d.billed.fy && elapsed
           ? d.receivables.total / (d.billed.fy / elapsed)
           : null;
+        const parties = d.receivables.parties || d.receivables.topOverdue || [];
         return (
-          <Card tone="alert">
+          <Card tone="alert"
+                onOpen={parties.length ? () => setSheet({
+                  title: 'Who owes you',
+                  sub: parties.length + ' parties · largest first',
+                  rows: parties.map(p => ({
+                    name: p.party,
+                    meta: (p.bills ? p.bills + (p.bills > 1 ? ' bills' : ' bill') : '') +
+                          (p.company ? ' · ' + p.company : ''),
+                    value: money(p.amount),
+                    tag: p.maxOverdue > 0 ? p.maxOverdue + 'd late' : 'not due',
+                    tagColor: p.maxOverdue > 90 ? T.red : p.maxOverdue > 0 ? T.amber : T.sub
+                  }))
+                }) : undefined}
+                openLabel={'See all ' + parties.length + ' who owe you'}>
             <ChartHead title="Money owed to you" right={money(d.receivables.total)} />
             {months != null && (
               <div style={{ fontSize: 11.5, color: '#FF8A7D', marginTop: -6, marginBottom: 13 }}>
@@ -148,7 +220,19 @@ export default function Business({ online }) {
       {(d.emd || d.pbg) && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9, marginBottom: 10 }}>
           {d.emd && (
-            <div style={{ background: T.card, borderRadius: 19, padding: 14 }}>
+            <div onClick={(d.emd.items || []).length ? () => setSheet({
+                   title: 'Expired deposits',
+                   sub: d.emd.expired + ' instruments · most recent first',
+                   rows: d.emd.items.map(x => ({
+                     name: x.who || 'Unnamed',
+                     meta: [x.bank, x.ref].filter(Boolean).join(' · '),
+                     value: money(x.amount),
+                     tag: x.days + 'd ago',
+                     tagColor: x.days < 180 ? T.red : T.sub
+                   }))
+                 }) : undefined}
+                 style={{ background: T.card, borderRadius: 19, padding: 14,
+                          cursor: (d.emd.items || []).length ? 'pointer' : 'default' }}>
               <div style={{ fontSize: 10.5, color: T.sub }}>Deposits lodged</div>
               <div style={{ fontSize: 21, color: T.text, marginTop: 2, ...FIG }}>
                 {money(d.emd.locked)}
@@ -160,12 +244,24 @@ export default function Business({ online }) {
                 <SplitBar part={d.emd.expiredValue} whole={d.emd.locked} color={T.amber} />
               </div>
               <div style={{ fontSize: 10.5, color: T.amber, marginTop: 6 }}>
-                {money(d.emd.expiredValue)} expired
+                {money(d.emd.expiredValue)} expired{(d.emd.items || []).length ? ' ›' : ''}
               </div>
             </div>
           )}
           {d.pbg && (
-            <div style={{ background: T.card, borderRadius: 19, padding: 14 }}>
+            <div onClick={(d.pbg.items || []).length ? () => setSheet({
+                   title: 'Open guarantees',
+                   sub: d.pbg.open + ' PBGs · soonest to expire first',
+                   rows: d.pbg.items.map(x => ({
+                     name: x.who || 'Unnamed',
+                     meta: x.bank || '',
+                     value: money(x.amount),
+                     tag: x.days < 0 ? Math.abs(x.days) + 'd expired' : 'in ' + x.days + 'd',
+                     tagColor: x.days < 0 ? T.red : x.days <= 30 ? T.amber : T.sub
+                   }))
+                 }) : undefined}
+                 style={{ background: T.card, borderRadius: 19, padding: 14,
+                          cursor: (d.pbg.items || []).length ? 'pointer' : 'default' }}>
               <div style={{ fontSize: 10.5, color: T.sub }}>Guarantees open</div>
               <div style={{ fontSize: 21, color: T.text, marginTop: 2, ...FIG }}>
                 {money(d.pbg.value)}
@@ -178,6 +274,7 @@ export default function Business({ online }) {
               </div>
               <div style={{ fontSize: 10.5, color: d.pbg.expired ? T.red : T.sub, marginTop: 6 }}>
                 {d.pbg.expired ? d.pbg.expired + ' expired' : 'all current'}
+                {(d.pbg.items || []).length ? ' ›' : ''}
               </div>
             </div>
           )}

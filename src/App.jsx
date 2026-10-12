@@ -152,7 +152,7 @@ export default function App() {
 
       <main style={{ padding: '0 0.75rem 0.9rem' }}>
         {active === 'business' && <Business online={online} />}
-        {active === 'home'     && <Home  user={user} isMgr={isMgr} online={online} />}
+        {active === 'home'     && <Home  user={user} isMgr={isMgr} online={online} onGoTab={setTab} />}
         {active === 'leads'    && <Leads user={user} online={online} onQueued={refreshPending} />}
         {active === 'tasks'    && <Tasks user={user} isMgr={isMgr} online={online} onQueued={refreshPending} />}
         {active === 'more'     && <More  user={user} online={online} onDrain={drain} onQueued={refreshPending} />}
