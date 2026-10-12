@@ -55,7 +55,7 @@ export default function Everything({ online, user, onDrain, onQueued, pending })
       </>
     );
   }
-  if (open) return <Module mod={open} online={online} onBack={() => setOpen(null)} />;
+  if (open) return <Module mod={open} online={online} onBack={() => setOpen(null)} onQueued={onQueued} />;
 
   if (!mods && !err) return <Spin />;
   if (!mods) {

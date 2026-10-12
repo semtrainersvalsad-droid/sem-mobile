@@ -20,6 +20,7 @@ import { T, R, money, when as whenStr, urgency } from '../theme.js';
 import { Spin, Sheet, StaleNote } from '../components/tiles.jsx';
 import { call } from '../api.js';
 import { cached } from '../db.js';
+import { ActionSheet, MODULE_ACTIONS, ACTION_FORMS } from '../components/actions.jsx';
 
 const FIG = { fontVariantNumeric: 'tabular-nums' };
 
@@ -32,7 +33,7 @@ function statusTone(s) {
   return T.sub;
 }
 
-export default function Module({ mod, online, onBack }) {
+export default function Module({ mod, online, onBack, onQueued }) {
   const [data, setData] = React.useState(null);
   const [stale, setStale] = React.useState(null);
   const [staleErr, setStaleErr] = React.useState('');
@@ -41,6 +42,7 @@ export default function Module({ mod, online, onBack }) {
   const [q, setQ] = React.useState('');
   const [chip, setChip] = React.useState('');
   const [open, setOpen] = React.useState(null);
+  const [act, setAct] = React.useState(null);
 
   React.useEffect(() => {
     let dead = false;
@@ -82,11 +84,25 @@ export default function Module({ mod, online, onBack }) {
     );
   }
 
+  const actions = MODULE_ACTIONS[mod.id] || {};
+  const rowAction = actions.row;
+  const addAction = actions.add;
+
   const shownTotal = data.hasAmount
     ? rows.reduce((a, r) => a + (r.amount || 0), 0) : 0;
 
   return (
     <>
+      {act && (
+        <ActionSheet action={act.action} record={act.record} online={online}
+                     onClose={() => setAct(null)}
+                     onDone={r => {
+                       setAct(null); setOpen(null);
+                       if (r && r.queued) { onQueued && onQueued(); }
+                       else { setNonce(n => n + 1); }   // re-read so the change shows
+                     }} />
+      )}
+
       {open && (
         <Sheet onClose={() => setOpen(null)}>
           <div style={{ fontSize: 16, color: T.text, lineHeight: 1.3 }}>{open.title}</div>
@@ -118,6 +134,12 @@ export default function Module({ mod, online, onBack }) {
               <div style={{ fontSize: 12, color: T.sub }}>No further detail recorded.</div>
             )}
           </div>
+          {rowAction && data.writable && (
+            <button onClick={() => { setAct({ action: rowAction, record: open }); }} style={{
+              background: T.accent, color: T.onAccent, border: 'none', borderRadius: 12,
+              padding: '13px 0', width: '100%', fontSize: 14, marginTop: 18, cursor: 'pointer'
+            }}>{ACTION_FORMS[rowAction].label}</button>
+          )}
           {!data.writable && (
             <div style={{ fontSize: 11.5, color: T.faint, marginTop: 14, lineHeight: 1.5 }}>
               Read-only on the phone. Nobody edits a bid standing in a corridor,
@@ -213,6 +235,15 @@ export default function Module({ mod, online, onBack }) {
           )}
         </div>
       ))}
+
+      {addAction && (
+        <button onClick={() => setAct({ action: addAction, record: null })} style={{
+          position: 'fixed', right: 18, bottom: 88, zIndex: 20,
+          background: T.accent, color: T.onAccent, border: 'none',
+          borderRadius: 999, padding: '14px 20px', fontSize: 14,
+          boxShadow: '0 6px 20px rgba(0,0,0,0.45)', cursor: 'pointer'
+        }}>+ {ACTION_FORMS[addAction].label.replace(/^Log a /, '')}</button>
+      )}
 
       {rows.length > 300 && (
         <div style={{ fontSize: 11.5, color: T.faint, padding: '8px 2px' }}>
