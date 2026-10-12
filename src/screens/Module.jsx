@@ -142,8 +142,9 @@ export default function Module({ mod, online, onBack, onQueued }) {
           )}
           {!data.writable && (
             <div style={{ fontSize: 11.5, color: T.faint, marginTop: 14, lineHeight: 1.5 }}>
-              Read-only on the phone. Nobody edits a bid standing in a corridor,
-              and an accidental stage change here is expensive to unpick.
+              {mod.id === 'tenders'
+                ? 'Read-only on the phone by choice. Nobody edits a bid standing in a corridor, and an accidental stage change here is expensive to unpick.'
+                : 'Read-only for now — this sheet’s columns have not been confirmed yet, and writing to a column nobody has checked is how a record gets quietly corrupted.'}
             </div>
           )}
         </Sheet>
