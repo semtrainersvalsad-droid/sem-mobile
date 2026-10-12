@@ -328,6 +328,29 @@ export default function Business({ online }) {
                      sub={d.tenders.closingThisWeek
                        ? d.tenders.closingThisWeek + ' close within a week'
                        : 'none closing this week'} />
+          {/* "Live" mixes two different facts and must not pretend otherwise.
+              A deadline nobody can read counts as live — assuming a bid is dead
+              on the strength of an unreadable date is how a tender gets missed
+              — but it is not the same as a confirmed open deadline, and the
+              gap between them is a list someone can go and fix. */}
+          {d.tenders.liveUnreadable > 0 && (
+            <div style={{ fontSize: 11.5, color: T.amber, lineHeight: 1.55, marginTop: 4 }}>
+              {d.tenders.liveConfirmed} have a deadline still ahead.{' '}
+              {d.tenders.liveUnreadable} are counted live only because the
+              deadline is written as text, not a date
+              {d.tenders.liveNoDate ? ', and ' + d.tenders.liveNoDate + ' have none recorded' : ''}.
+            </div>
+          )}
+          {(d.tenders.unreadableSamples || []).length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              {d.tenders.unreadableSamples.slice(0, 3).map((x, i) => (
+                <div key={i} style={{ fontSize: 11, color: T.sub, padding: '4px 0' }}>
+                  <span style={{ color: T.faint }}>“{x.raw}”</span>{' '}
+                  {String(x.title).substring(0, 34)}
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       ) : null}
 
