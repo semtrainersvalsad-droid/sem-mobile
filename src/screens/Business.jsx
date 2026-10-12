@@ -88,9 +88,14 @@ export default function Business({ online }) {
             {money(d.billed.fy / (fyMonthsElapsed() || 1))} a month across{' '}
             {fyMonthsElapsed()} months · from Tally
           </div>
-          <div style={{ marginTop: 12 }}>
-            <MonthBars months={d.billed.months} lastPartial={partial}
-                       label={'Billing by month: ' + d.billed.months
+          {!Array.isArray(d.billed.months) && (
+            <div style={{ fontSize: 11, color: T.faint, marginTop: 6 }}>
+              Monthly breakdown needs the updated server.
+            </div>
+          )}
+          <div style={{ marginTop: 12, display: Array.isArray(d.billed.months) && d.billed.months.length ? 'block' : 'none' }}>
+            <MonthBars months={d.billed.months || []} lastPartial={partial}
+                       label={'Billing by month: ' + (d.billed.months || [])
                          .map(m => m.label + ' ' + tick(m.value)).join(', ')} />
           </div>
           <div style={{ fontSize: 11, color: T.faint, marginTop: 2 }}>
@@ -248,14 +253,20 @@ export default function Business({ online }) {
       )}
 
       {/* ── Demos out ──────────────────────────────────────────────────── */}
-      {d.demos && d.demos.out > 0 && (
+      {/* Every field below is read defensively. The API this screen calls can
+          be an older deployment than the code that renders it — the Apps
+          Script project caps at 200 versions and was full when this shipped —
+          so a missing field must leave a gap, not throw and blank the screen. */}
+      {d.demos && d.demos.out > 0 && (() => {
+        const longest = d.demos.longest || [];
+        return (
         <Card>
           <ChartHead title="Demos out" right={String(d.demos.out)} />
-          {(d.demos.longest || []).map((x, i) => (
+          {longest.map((x, i) => (
             <div key={i} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               padding: '9px 0',
-              borderBottom: i < d.demos.longest.length - 1 ? '1px solid ' + T.line : 'none'
+              borderBottom: i < longest.length - 1 ? '1px solid ' + T.line : 'none'
             }}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontSize: 12.5, color: T.text }}>{x.product || 'Unnamed'}</div>
@@ -264,16 +275,20 @@ export default function Business({ online }) {
               <div style={{ fontSize: 13, color: T.amber, ...FIG }}>{x.days}d</div>
             </div>
           ))}
-          {!d.demos.longest.length && (
+          {!longest.length && (
             <div style={{ fontSize: 11.5, color: T.sub }}>
-              None out longer than 90 days. Oldest is {d.demos.oldestDays}d.
+              {d.demos.oldestDays != null
+                ? 'None out longer than 90 days. Oldest is ' + d.demos.oldestDays + 'd.'
+                : d.demos.out + ' units are with customers.'}
             </div>
           )}
           <div style={{ fontSize: 11, color: T.faint, marginTop: 10 }}>
-            Counted from dispatch{why('demos') ? ' — ' + why('demos').toLowerCase() : ''}
+            {d.demos.basis ? 'Counted from dispatch' : 'From Demo_Tracking'}
+            {why('demos') ? ' — ' + why('demos').toLowerCase() : ''}
           </div>
         </Card>
-      )}
+        );
+      })()}
 
       {/* ── Breakdowns, where the columns hold what they claim ─────────── */}
       {d.salesByState ? (
