@@ -12,6 +12,7 @@
  * working PWA should fail loudly rather than produce a plausible one.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,6 +52,18 @@ if (!sw.includes('/*__PRECACHE__*/')) {
   process.exit(1);
 }
 sw = sw.replace('/*__PRECACHE__*/', JSON.stringify(precache, null, 0) + ' || ');
+
+// Stamp the cache name with this build, so `activate` evicts the previous one.
+// Derived from the fingerprinted asset names, which change exactly when the app
+// changes — so a rebuild that produces identical output reuses its cache rather
+// than needlessly discarding a warm one.
+const buildId = createHash('sha1').update(precache.join('|')).digest('hex').slice(0, 8);
+if (!sw.includes('/*__BUILDID__*/')) {
+  console.error('postbuild: sw.js has no /*__BUILDID__*/ marker — caches would never be evicted');
+  process.exit(1);
+}
+sw = sw.replace("/*__BUILDID__*/'dev'", JSON.stringify(buildId));
+console.log('postbuild: cache version ' + buildId);
 writeFileSync(swPath, sw);
 
 // The things whose absence makes an app merely a web page.

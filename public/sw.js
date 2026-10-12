@@ -20,8 +20,17 @@
  * The version string is what evicts old caches. Bump it on every deploy.
  */
 
-const VERSION = 'sem-mobile-v1';
-const SHELL = VERSION + '-shell';
+/**
+ * The cache name carries the build.
+ *
+ * This was the constant 'sem-mobile-v1', with a comment telling whoever came
+ * next to bump it on every deploy. Nobody ever did, including me, across a
+ * dozen deploys — so `activate` deleted every cache except the one it was
+ * already using, old assets accumulated forever, and nothing was ever evicted.
+ * A rule that depends on remembering is not a rule. The build writes it now.
+ */
+const VERSION = /*__BUILDID__*/'dev';
+const SHELL = 'sem-mobile-' + VERSION + '-shell';
 
 // Filled by the build. Vite fingerprints asset names, so precaching the
 // manifest is what makes a new deploy take effect rather than lingering.
@@ -64,12 +73,32 @@ self.addEventListener('fetch', (e) => {
   if (url.hostname.endsWith('script.google.com') ||
       url.hostname.endsWith('googleusercontent.com')) return;
 
-  // Navigations: serve the shell so a deep link still opens offline.
+  /**
+   * Navigations: network first, cache only as a fallback.
+   *
+   * This was cache-first, and that is how an installed app pins itself to the
+   * version it was first opened with. index.html names the fingerprinted
+   * bundle; serve a cached index.html and the browser asks for the old bundle,
+   * finds it cached too, and runs last week's app forever. Every deploy landed
+   * correctly on the server and changed nothing on the phone.
+   *
+   * The HTML is one small request and it is the only file that decides which
+   * build runs, so it is worth fetching when there is signal. Offline still
+   * works: the cached copy answers, and that is the case cache-first was for.
+   */
   if (req.mode === 'navigate') {
     e.respondWith(
-      caches.match('./index.html', { ignoreVary: true }).then(hit => hit || fetch(req).catch(() =>
-        new Response('<h1>Offline</h1><p>Open the app again once you have signal.</p>',
-          { headers: { 'Content-Type': 'text/html' } })))
+      fetch(req)
+        .then(res => {
+          if (res && res.status === 200) {
+            const copy = res.clone();
+            caches.open(SHELL).then(c => c.put('./index.html', copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match('./index.html', { ignoreVary: true }).then(hit => hit ||
+          new Response('<h1>Offline</h1><p>Open the app again once you have signal.</p>',
+            { headers: { 'Content-Type': 'text/html' } })))
     );
     return;
   }
