@@ -132,7 +132,19 @@ export default function Business({ online }) {
 
       {/* ── Cash in ─────────────────────────────────────────────────────── */}
       {d.billed ? (
-        <Card>
+        <Card
+          onOpen={(d.billed.parties || []).length ? () => setSheet({
+            title: 'Who you billed',
+            sub: d.billed.partyCount + ' customers this year · ' + money(d.billed.fy),
+            rows: d.billed.parties.map(p => ({
+              name: p.name,
+              meta: p.invoices + (p.invoices > 1 ? ' invoices' : ' invoice'),
+              value: money(p.value),
+              tag: d.billed.fy ? Math.round((p.value / d.billed.fy) * 100) + '%' : '',
+              tagColor: T.sub
+            }))
+          }) : undefined}
+          openLabel={'See all ' + (d.billed.partyCount || 0) + ' customers billed'}>
           <div style={{ fontSize: 11.5, color: T.sub }}>Billed this financial year</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 3 }}>
             <div style={{ fontSize: 38, color: T.text, lineHeight: 1, ...FIG }}>
