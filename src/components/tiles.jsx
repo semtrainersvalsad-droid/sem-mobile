@@ -1,23 +1,29 @@
 /**
- * The SEM Mobile design system, lifted from MobileApp.html unchanged.
+ * The SEM Mobile design system.
  *
- * "Bold tiles — GPay-style, sunlight-glanceable." The palette is dark text on
- * light colour rather than the other way round, because the people using this
- * are standing in a hospital corridor or a car park in Gujarat, reading a phone
- * at arm's length in daylight. That constraint produced these colours; keep
- * them.
+ * Dark, deliberately. The original was dark ink on light colour tiles, chosen
+ * for daylight glanceability, and the objection to dark on a phone used
+ * outdoors is real. The answer is contrast rather than brightness: pure white
+ * on near-black, and a secondary grey (#99A3B0) that sits well above the
+ * #6B7280 most dark themes settle for. Anything dimmer than `sub` fails in
+ * sunlight, which is why there is no third text colour to reach for.
+ *
+ * Every surface and ink value lives in theme.js, and this file re-exports the
+ * status pairs from it. One palette, one place — a colour invented at a call
+ * site is how a design system quietly stops being one.
  */
 import React from 'react';
+import { T } from '../theme.js';
 
 export const MT = {
-  teal:    { bg: '#9FE1CB', fg: '#04342C', sub: '#085041' },
-  blue:    { bg: '#B5D4F4', fg: '#042C53', sub: '#0C447C' },
-  amber:   { bg: '#FAC775', fg: '#412402', sub: '#633806' },
-  red:     { bg: '#F7C1C1', fg: '#501313', sub: '#791F1F' },
-  neutral: { bg: '#F1EFE8', fg: '#2C2C2A', sub: '#5F5E5A' }
+  teal:    { bg: T.greenBg, fg: T.green,  sub: '#7FCFB0' },
+  blue:    { bg: T.blueBg,  fg: T.blue,   sub: '#93C9E8' },
+  amber:   { bg: T.amberBg, fg: T.amber,  sub: '#D9A862' },
+  red:     { bg: T.redBg,   fg: T.red,    sub: '#E09A93' },
+  neutral: { bg: T.raised,  fg: T.text,   sub: T.sub }
 };
 
-export const PRIMARY = '#0077b6';
+export const PRIMARY = T.accent;
 
 /**
  * Icons, inline.
@@ -40,7 +46,8 @@ const PATHS = {
   rupee:       'M6 3h12v2h-4.2a4 4 0 0 1 1.5 2H18v2h-2.5a4.5 4.5 0 0 1-4.3 4H9.8l6 6h-2.9l-6-6v-2h3.4a2.5 2.5 0 0 0 2.4-2H6V7h6.6a2 2 0 0 0-2-2H6z',
   file:        'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm2 16H8v-2h8zm0-4H8v-2h8zm-3-5V3.5L18.5 9z',
   wifi:        'M12 18a2 2 0 1 0 2 2 2 2 0 0 0-2-2zm0-4a6 6 0 0 0-4.2 1.8l1.4 1.4a4 4 0 0 1 5.6 0l1.4-1.4A6 6 0 0 0 12 14zm0-4a10 10 0 0 0-7.1 2.9l1.4 1.4a8 8 0 0 1 11.4 0l1.4-1.4A10 10 0 0 0 12 10z',
-  external:    'M14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z'
+  external:    'M14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z',
+  chart:       'M4 20h3V10H4zm6.5 0h3V4h-3zM17 20h3v-7h-3z'
 };
 
 export function Icon({ name, size = 16, style }) {
@@ -103,8 +110,9 @@ export function Tile({ c, icon, value, label, small, onClick }) {
     }}>
       {icon && <Icon name={icon} size={15} style={{ color: t.fg, opacity: 0.85 }} />}
       <div style={{
-        fontSize: small ? '1.05rem' : '1.25rem', fontWeight: 800,
-        color: t.fg, lineHeight: 1.15, marginTop: icon ? '0.2rem' : 0
+        fontSize: small ? '1.05rem' : '1.25rem', fontWeight: 700,
+        color: t.fg, lineHeight: 1.15, marginTop: icon ? '0.2rem' : 0,
+        fontVariantNumeric: 'tabular-nums'
       }}>{value}</div>
       <div style={{ fontSize: '0.68rem', fontWeight: 600, color: t.sub }}>{label}</div>
     </div>
@@ -114,8 +122,8 @@ export function Tile({ c, icon, value, label, small, onClick }) {
 export function Card({ children, style, onClick }) {
   return (
     <div onClick={onClick} style={{
-      background: 'white', borderRadius: 16, padding: '0.9rem',
-      marginBottom: '0.7rem', border: '1px solid #ECEDF0', ...(style || {})
+      background: T.card, borderRadius: 18, padding: '0.9rem',
+      marginBottom: '0.7rem', color: T.text, ...(style || {})
     }}>{children}</div>
   );
 }
@@ -124,8 +132,8 @@ export function Btn({ children, onClick, disabled, color, outline, style }) {
   const bg = outline ? 'transparent' : (color || PRIMARY);
   return (
     <button disabled={disabled} onClick={onClick} style={{
-      background: disabled ? '#C9CDD4' : bg,
-      color: outline ? (color || PRIMARY) : 'white',
+      background: disabled ? T.line : bg,
+      color: outline ? (color || PRIMARY) : (bg === T.accent ? T.onAccent : '#fff'),
       border: outline ? '1.5px solid ' + (color || PRIMARY) : 'none',
       borderRadius: 12, padding: '0.8rem 1rem', fontSize: '0.92rem',
       fontWeight: 700, width: '100%', cursor: disabled ? 'default' : 'pointer',
@@ -139,7 +147,7 @@ export function Spin() {
     <div style={{ textAlign: 'center', padding: '3rem' }}>
       <div style={{
         width: 28, height: 28, margin: '0 auto',
-        border: '3px solid #E3E6EA', borderTopColor: PRIMARY,
+        border: '3px solid ' + T.line, borderTopColor: PRIMARY,
         borderRadius: '50%', animation: 'semspin 0.8s linear infinite'
       }} />
       <style>{'@keyframes semspin{to{transform:rotate(360deg)}}'}</style>
@@ -155,12 +163,13 @@ export function Sheet({ onClose, children }) {
       zIndex: 50, display: 'flex', alignItems: 'flex-end'
     }}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: '#F6F7F9', width: '100%', borderRadius: '20px 20px 0 0',
+        background: T.bg, width: '100%', borderRadius: '20px 20px 0 0',
+        color: T.text,
         padding: '1rem', maxHeight: '88vh', overflowY: 'auto',
         paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))'
       }}>
         <div style={{
-          width: 38, height: 4, background: '#D3D7DD', borderRadius: 2,
+          width: 38, height: 4, background: T.line, borderRadius: 2,
           margin: '0 auto 0.9rem'
         }} />
         {children}
@@ -176,9 +185,9 @@ export function Chips({ options, value, onChange }) {
         const on = o === value;
         return (
           <button key={o} onClick={() => onChange(o)} style={{
-            background: on ? PRIMARY : 'white',
-            color: on ? 'white' : '#44474C',
-            border: '1px solid ' + (on ? PRIMARY : '#DFE2E7'),
+            background: on ? PRIMARY : T.raised,
+            color: on ? T.onAccent : T.sub,
+            border: '1px solid ' + (on ? PRIMARY : T.line),
             borderRadius: 999, padding: '0.4rem 0.8rem',
             fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer'
           }}>{o}</button>
@@ -214,7 +223,7 @@ export function StaleNote({ at, error, onRetry }) {
       </span>
       {onRetry && (
         <button onClick={onRetry} style={{
-          background: 'rgba(0,0,0,0.08)', border: 'none', borderRadius: 8,
+          background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 8,
           padding: '0.25rem 0.6rem', fontSize: '0.74rem', fontWeight: 700,
           color: 'inherit', cursor: 'pointer', flexShrink: 0
         }}>Retry</button>

@@ -10,13 +10,32 @@ import React from 'react';
 import { Icon, Spin, StatusStrip, PRIMARY, initials } from './components/tiles.jsx';
 import { checkSession, getToken, setToken, sendQueued, NeedsLogin, Offline } from './api.js';
 import { outbox, outboxSet, outboxRemove, pendingCount } from './db.js';
+import { T } from './theme.js';
 import Login from './screens/Login.jsx';
 import Home from './screens/Home.jsx';
+import Business from './screens/Business.jsx';
 import Leads from './screens/Leads.jsx';
 import Tasks from './screens/Tasks.jsx';
 import More from './screens/More.jsx';
 
-const TABS = [
+/**
+ * Managers get Business first; everyone else never sees it.
+ *
+ * The dashboard is company-wide money — billing, receivables, deposits — and an
+ * engineer opening the app in a hospital corridor needs their own day, not the
+ * receivable book. Role decides the tab set rather than hiding panels inside a
+ * shared screen, because a screen that is mostly hidden for most users is a
+ * screen nobody designed for either of them.
+ */
+const TABS_MGR = [
+  { id: 'business', label: 'Business', icon: 'chart' },
+  { id: 'home',     label: 'Home',     icon: 'house' },
+  { id: 'leads',    label: 'Leads',    icon: 'user-plus' },
+  { id: 'tasks',    label: 'Tasks',    icon: 'list-check' },
+  { id: 'more',     label: 'More',     icon: 'ellipsis' }
+];
+
+const TABS_STAFF = [
   { id: 'home',   label: 'Home',   icon: 'house' },
   { id: 'leads',  label: 'Leads',  icon: 'user-plus' },
   { id: 'tasks',  label: 'Tasks',  icon: 'list-check' },
@@ -26,7 +45,7 @@ const TABS = [
 export default function App() {
   const [user, setUser] = React.useState(null);
   const [booting, setBooting] = React.useState(true);
-  const [tab, setTab] = React.useState('home');
+  const [tab, setTab] = React.useState(null);   // set once the role is known
   const [online, setOnline] = React.useState(navigator.onLine);
   const [pending, setPending] = React.useState(0);
 
@@ -103,54 +122,67 @@ export default function App() {
 
   const isMgr = String(user.role || '').toLowerCase().indexOf('manager') >= 0 ||
                 String(user.role || '').toLowerCase().indexOf('admin') >= 0;
+  const tabs = isMgr ? TABS_MGR : TABS_STAFF;
+  const active = tab && tabs.some(t => t.id === tab) ? tab : tabs[0].id;
 
   return (
-    <div style={{ minHeight: '100vh', background: '#F6F7F9', paddingBottom: 72 }}>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, paddingBottom: 76 }}>
       <header style={{
-        background: PRIMARY, color: 'white', padding:
-          'calc(0.9rem + env(safe-area-inset-top)) 1rem 0.9rem',
+        background: T.bg, padding: 'calc(0.9rem + env(safe-area-inset-top)) 1rem 0.8rem',
         display: 'flex', alignItems: 'center', gap: '0.7rem'
       }}>
         <div style={{
-          width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,0.18)',
-          display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: '0.85rem'
+          width: 38, height: 38, borderRadius: 11, background: T.accent, color: T.onAccent,
+          display: 'grid', placeItems: 'center', fontSize: '0.85rem'
         }}>{initials(user.name)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.95rem', fontWeight: 700, whiteSpace: 'nowrap',
+          <div style={{ fontSize: '0.95rem', color: T.text, whiteSpace: 'nowrap',
                         overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {user.name || 'SEM Trainers'}
           </div>
-          <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>{user.role || ''}</div>
+          <div style={{ fontSize: '0.72rem', color: T.sub }}>{user.role || ''}</div>
         </div>
         <button onClick={() => { setToken(''); setUser(null); }} style={{
-          background: 'rgba(255,255,255,0.16)', border: 'none', color: 'white',
-          borderRadius: 12, width: 40, height: 40, fontSize: '0.9rem'
+          background: T.raised, border: 'none', color: T.sub,
+          borderRadius: 12, width: 40, height: 40
         }} aria-label="Sign out"><Icon name="sign-out" /></button>
       </header>
 
       <StatusStrip offline={!online} pending={pending} />
 
-      <main style={{ padding: '0.9rem' }}>
-        {tab === 'home'  && <Home  user={user} isMgr={isMgr} online={online} />}
-        {tab === 'leads' && <Leads user={user} online={online} onQueued={refreshPending} />}
-        {tab === 'tasks' && <Tasks user={user} isMgr={isMgr} online={online} onQueued={refreshPending} />}
-        {tab === 'more'  && <More  user={user} online={online} onDrain={drain} onQueued={refreshPending} />}
+      <main style={{ padding: '0 0.75rem 0.9rem' }}>
+        {active === 'business' && <Business online={online} />}
+        {active === 'home'     && <Home  user={user} isMgr={isMgr} online={online} />}
+        {active === 'leads'    && <Leads user={user} online={online} onQueued={refreshPending} />}
+        {active === 'tasks'    && <Tasks user={user} isMgr={isMgr} online={online} onQueued={refreshPending} />}
+        {active === 'more'     && <More  user={user} online={online} onDrain={drain} onQueued={refreshPending} />}
       </main>
 
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, background: 'white',
-        borderTop: '1px solid #E7E9ED', display: 'flex',
+        position: 'fixed', bottom: 0, left: 0, right: 0, background: '#121519',
+        borderTop: '1px solid ' + T.line, display: 'flex',
         paddingBottom: 'env(safe-area-inset-bottom)'
       }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex: 1, background: 'none', border: 'none', padding: '0.6rem 0 0.5rem',
-            color: tab === t.id ? PRIMARY : '#8A8F98', cursor: 'pointer'
-          }}>
-            <Icon name={t.icon} size={19} />
-            <div style={{ fontSize: '0.64rem', fontWeight: 700, marginTop: 2 }}>{t.label}</div>
-          </button>
-        ))}
+        {tabs.map(t => {
+          const on = active === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              flex: 1, background: 'none', border: 'none', padding: '0.5rem 0 0.6rem',
+              color: on ? T.text : T.faint, cursor: 'pointer'
+            }}>
+              {/* The active tab wears the accent as a pill rather than tinted
+                  ink: at 10px a colour change alone is not a reliable signal in
+                  daylight, and the filled shape reads at a glance. */}
+              <div style={{
+                background: on ? T.accent : 'transparent', borderRadius: 999,
+                margin: '0 14px', padding: '3px 0', color: on ? T.onAccent : T.faint
+              }}>
+                <Icon name={t.icon} size={17} />
+              </div>
+              <div style={{ fontSize: '0.6rem', marginTop: 3 }}>{t.label}</div>
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
