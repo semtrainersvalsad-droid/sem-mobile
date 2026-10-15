@@ -128,7 +128,7 @@ export default function Module({ mod, online, onBack, onQueued }) {
               const isLink = /^https?:\/\//i.test(String(f.v || ''));
               return (
                 <div key={i} style={{ display: 'flex', gap: 12, padding: '9px 0',
-                                      borderBottom: '1px solid ' + T.line }}>
+                                      borderBottom: '1px solid ' + T.rule }}>
                   <div style={{ fontSize: 11.5, color: T.sub, width: 118, flexShrink: 0 }}>{f.k}</div>
                   <div style={{ fontSize: 12.5, color: T.text, flex: 1, wordBreak: 'break-word' }}>
                     {isLink

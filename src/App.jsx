@@ -12,7 +12,7 @@ import { checkSession, getToken, setToken, sendQueued, NeedsLogin, Offline } fro
 import { outbox, outboxSet, outboxRemove, pendingCount } from './db.js';
 import { T } from './theme.js';
 import Login from './screens/Login.jsx';
-import Home from './screens/Home.jsx';
+import Today from './screens/Today.jsx';
 import Business from './screens/Business.jsx';
 import Leads from './screens/Leads.jsx';
 import Tasks from './screens/Tasks.jsx';
@@ -28,16 +28,16 @@ import Everything from './screens/Everything.jsx';
  * shared screen, because a screen that is mostly hidden for most users is a
  * screen nobody designed for either of them.
  */
-const TABS_MGR = [
+export const TABS_MGR = [
+  { id: 'today',    label: 'Today',    icon: 'house' },
   { id: 'business', label: 'Business', icon: 'chart' },
-  { id: 'home',     label: 'Home',     icon: 'house' },
   { id: 'leads',    label: 'Leads',    icon: 'user-plus' },
   { id: 'tasks',    label: 'Tasks',    icon: 'list-check' },
   { id: 'all',      label: 'Everything', icon: 'grid' }
 ];
 
-const TABS_STAFF = [
-  { id: 'home',   label: 'Home',   icon: 'house' },
+export const TABS_STAFF = [
+  { id: 'today',  label: 'Today',  icon: 'house' },
   { id: 'leads',  label: 'Leads',  icon: 'user-plus' },
   { id: 'tasks',  label: 'Tasks',  icon: 'list-check' },
   { id: 'all',    label: 'Everything', icon: 'grid' }
@@ -153,7 +153,7 @@ export default function App() {
 
       <main style={{ padding: '0 0.75rem 0.9rem' }}>
         {active === 'business' && <Business online={online} />}
-        {active === 'home'     && <Home  user={user} isMgr={isMgr} online={online} onGoTab={setTab} />}
+        {active === 'today'    && <Today user={user} isMgr={isMgr} online={online} onGoTab={setTab} />}
         {active === 'leads'    && <Leads user={user} online={online} onQueued={refreshPending} />}
         {active === 'tasks'    && <Tasks user={user} isMgr={isMgr} online={online} onQueued={refreshPending} />}
         {active === 'all'      && <Everything user={user} online={online} onDrain={drain} onQueued={refreshPending} pending={pending} />}

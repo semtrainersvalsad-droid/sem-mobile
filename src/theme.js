@@ -15,11 +15,26 @@ export const T = {
   bg:      '#0B0D10',   // page
   card:    '#171B21',   // the default surface for anything in a list
   raised:  '#1E232A',   // chips, avatars, icon wells
-  line:    '#2A3039',   // the only divider; used sparingly
+  /**
+   * Two dividers, because one value cannot serve both jobs honestly.
+   * `line` is decorative — rows it separates are also separated by padding,
+   * so it may sit below the 3:1 non-text floor. `rule` is load-bearing: in a
+   * detail sheet it is the only thing dividing one field from the next, so it
+   * meets 3:1 (3.08 on card).
+   */
+  line:    '#2A3039',
+  rule:    '#64686D',
 
-  text:    '#FFFFFF',
-  sub:     '#99A3B0',   // lifted for daylight; do not darken
-  faint:   '#6B7684',   // placeholders and chevrons only, never content
+  text:    '#FFFFFF',   // 17.3:1 on card — AAA
+  sub:     '#99A3B0',   // 6.8:1 — AA. Lifted for daylight; do not darken
+  /**
+   * Measured, not chosen. #6B7684 gave 3.74:1 on the card and 3.97:1 in the
+   * nav — both below the 4.5:1 WCAG AA floor for text this size, and it was
+   * carrying chart axis labels and inactive tab labels, not just placeholders.
+   * #7A8490 is the nearest shade along the same hue that clears it: 4.55:1 on
+   * card, 4.82:1 in the nav.
+   */
+  faint:   '#7A8490',
 
   accent:  '#F08A1E',   // SEM orange
   onAccent:'#1F1405',   // text on accent — near-black, not brown
@@ -57,7 +72,12 @@ export const R = { card: 22, tile: 20, hero: 26, pill: 999, well: 14 };
  */
 export const SERIES = ['#3987e5', '#199e70', '#9085e9'];
 export const RAMP   = ['#CFE3F7', '#8FC2EE', '#4E9BDD', '#2E6FB0', '#1B4D80'];
-export const NEUTRAL_MARK = '#4C555F';   // a bar that carries no meaning but size
+/**
+ * A bar carrying no meaning but its own size — still data, so it must clear
+ * the 3:1 non-text floor. #4C555F measured 2.28:1 against the card and failed:
+ * eleven of the twelve bars on the billing chart were below the line.
+ */
+export const NEUTRAL_MARK = '#606871';   // 3.06:1 on #171B21
 
 /** Indian-format short money for an axis label, where every character costs. */
 export function tick(n) {
