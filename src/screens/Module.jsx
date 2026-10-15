@@ -121,15 +121,25 @@ export default function Module({ mod, online, onBack, onQueued }) {
             )}
           </div>
           <div style={{ marginTop: 10 }}>
-            {(open.fields || []).map((f, i) => (
-              <div key={i} style={{ display: 'flex', gap: 12, padding: '9px 0',
-                                    borderBottom: '1px solid ' + T.line }}>
-                <div style={{ fontSize: 11.5, color: T.sub, width: 118, flexShrink: 0 }}>{f.k}</div>
-                <div style={{ fontSize: 12.5, color: T.text, flex: 1, wordBreak: 'break-word' }}>
-                  {f.v}
+            {(open.fields || []).map((f, i) => {
+              // A Drive link is the only thing worth doing with a catalogue or
+              // a certificate on a phone — you open it in front of someone.
+              // Rendered as text it is an unusable 90-character string.
+              const isLink = /^https?:\/\//i.test(String(f.v || ''));
+              return (
+                <div key={i} style={{ display: 'flex', gap: 12, padding: '9px 0',
+                                      borderBottom: '1px solid ' + T.line }}>
+                  <div style={{ fontSize: 11.5, color: T.sub, width: 118, flexShrink: 0 }}>{f.k}</div>
+                  <div style={{ fontSize: 12.5, color: T.text, flex: 1, wordBreak: 'break-word' }}>
+                    {isLink
+                      ? <a href={f.v} target="_blank" rel="noopener noreferrer"
+                           onClick={e => e.stopPropagation()}
+                           style={{ color: T.accent, textDecoration: 'none' }}>Open file ↗</a>
+                      : f.v}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {!(open.fields || []).length && (
               <div style={{ fontSize: 12, color: T.sub }}>No further detail recorded.</div>
             )}
