@@ -118,7 +118,15 @@ export default function Today({ user, isMgr, online, onGoTab }) {
   const dash = data.dash || {};
   const needs = dash.needsYou || [];
   const held = dash.snoozed || [];
-  const tasks = (data.tasks || []).filter(t => String(t.Status || '').toLowerCase() !== 'closed');
+  // getTasks returns EVERY task to a manager, so "Your tasks" listed the whole
+  // team's work under the manager's name. Only the signed-in person's here;
+  // the team is one tap away on the Tasks tab.
+  const CLOSED = ['closed', 'done', 'completed', 'complete', 'cancelled', 'canceled'];
+  const nm = s => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const allOpen = (data.tasks || []).filter(t =>
+    !CLOSED.includes(nm(t.Status)) && String(t.Description || t.Task || '').trim());
+  const tasks = isMgr ? allOpen.filter(t => nm(t.Assignee || t.AssignedTo) === nm(user.name)) : allOpen;
+  const teamOpen = isMgr ? allOpen.length - tasks.length : 0;
   const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
   const overdue = tasks.filter(t => {
     const d = t.DueDate ? new Date(t.DueDate) : null;
@@ -250,6 +258,19 @@ export default function Today({ user, isMgr, online, onGoTab }) {
               }}>Bring back</button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── The team's work, for a manager ───────────────────────────────── */}
+      {teamOpen > 0 && (
+        <div onClick={() => onGoTab && onGoTab('tasks')} style={{
+          background: T.card, borderRadius: 15, padding: '12px 14px', margin: '24px 0 0',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10
+        }}>
+          <div style={{ flex: 1, fontSize: 13, color: T.text }}>
+            {teamOpen} open task{teamOpen === 1 ? '' : 's'} across the team
+          </div>
+          <div style={{ fontSize: 12, color: T.accent }}>Remind ›</div>
         </div>
       )}
 
