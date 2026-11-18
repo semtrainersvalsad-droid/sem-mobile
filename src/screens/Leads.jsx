@@ -115,8 +115,15 @@ function LeadDetail({ lead, user, online, onQueued, onClose, onSaved }) {
   const id = lead.LeadID || lead.id || lead._rowNum;
 
   const submit = async () => {
+    // Every open lead needs a next call (owner's rule, 18 Nov 2026). Without
+    // one, no reminder can ever fire for it again.
+    const ending = outcome === 'won' || outcome === 'lost';
+    if (!ending && !nextDate) { setMsg('Set the next call date — every open lead needs one.'); return; }
     setBusy(true); setMsg('');
-    const payload = { outcome, notes, comment: notes, nextFollowUpDate: nextDate, by: user.name };
+    // nextFollowUp is the name the server reads. This form used to send only
+    // nextFollowUpDate, and the server wrote a blank over the lead's next date.
+    const payload = { outcome, notes, comment: notes, nextFollowUp: nextDate, nextFollowUpDate: nextDate,
+                      userName: user.name, by: user.name };
     try {
       if (!navigator.onLine) {
         await enqueue('logFollowUp', [id, payload], 'Call outcome — ' + (lead.ContactName || lead.Organization || ''));
@@ -157,13 +164,25 @@ function LeadDetail({ lead, user, online, onQueued, onClose, onSaved }) {
         <input type="date" style={{ ...field, marginBottom: 0, fontSize: '0.88rem' }}
                value={nextDate} onChange={e => setNextDate(e.target.value)} />
       </div>
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', margin: '-0.35rem 0 0.85rem' }}>
+        {[['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7]].map(([l, n]) => {
+          const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n);
+          const v = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+          return (
+            <button key={l} onClick={() => setNextDate(v)} style={{
+              background: nextDate === v ? PRIMARY : '#1E232A', color: nextDate === v ? '#1F1405' : '#99A3B0',
+              border: 'none', borderRadius: 999, padding: '0.4rem 0.8rem', fontSize: '0.78rem', cursor: 'pointer'
+            }}>{l}</button>
+          );
+        })}
+      </div>
       {!online && (
         <div style={{ background: MT.amber.bg, color: MT.amber.fg, borderRadius: 10,
                       padding: '0.5rem 0.7rem', fontSize: '0.78rem', marginBottom: '0.7rem' }}>
           You are offline. This will be saved on the phone and sent when you have signal.
         </div>
       )}
-      {msg && <div style={{ fontSize: '0.8rem', color: '#1C5D3A', marginBottom: '0.6rem' }}>{msg}</div>}
+      {msg && <div style={{ fontSize: '0.8rem', color: '#FFB443', marginBottom: '0.6rem' }}>{msg}</div>}
       <Btn disabled={busy} onClick={submit}>{busy ? 'Saving…' : 'Save outcome'}</Btn>
     </Sheet>
   );

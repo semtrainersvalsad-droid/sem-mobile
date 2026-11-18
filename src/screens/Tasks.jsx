@@ -1,21 +1,21 @@
 /**
- * Tasks — who has what, and reminding each of them.
+ * Tasks — who has what, and each task from given to done.
  *
- * A manager opens on the TEAM: one row per person with what they have open and
- * late, whether they have been reminded today, and two ways to remind them.
+ * A manager opens on the TEAM: one row per person with what they have open,
+ * late, 5+ days late (needs a decision) and waiting for Got it, whether they
+ * were reminded today, and WhatsApp / Email to remind them now.
  *
- *   WhatsApp — opens WhatsApp with that person's whole list already typed.
- *              Costs nothing. Somebody still has to press Send, and WhatsApp
- *              tells nobody whether they did, so the ERP records "opened" and
- *              never "sent".
- *   Email    — the ERP sends it. Only for people with an address on file.
+ * Tap any task for its sheet. What it offers depends on whose it is:
+ *   yours   — Got it (if it was given to you), Done (a note is required),
+ *             Move date (a reason is required)
+ *   a manager on someone else's — Move date, Reassign, Close (with a note),
+ *             Remind on WhatsApp
+ * Every one of those is recorded server-side (Task_Events) and shows in the
+ * manager's evening summary. Owner's rules, 18 Nov 2026.
  *
- * Staff open on their own list.
- *
- * The add form used to send Task / DueDate / AssignedTo. The server reads
- * description / dueDate / assignee, so every task added here before 18 Nov
- * 2026 was saved with no words and no date. It now sends the server's names,
- * and the server accepts both, so anything still queued offline lands whole.
+ * WhatsApp reminders open WhatsApp with the text typed in. Someone still has to
+ * press Send, and WhatsApp tells nobody whether they did, so the ERP records
+ * "opened", never "sent".
  */
 import React from 'react';
 import { T } from '../theme.js';
@@ -30,6 +30,8 @@ const textOf = t => String(t.Description || t.Task || '').replace(/\s+/g, ' ').t
 const whoOf = t => String(t.Assignee || t.AssignedTo || '').replace(/\s+/g, ' ').trim();
 const first = n => String(n || '').trim().split(/\s+/)[0] || '';
 const APP_URL = 'https://semtrainersvalsad-droid.github.io/sem-mobile/';
+// Got it applies to tasks given from this day on (server: TF_ACK_SINCE).
+const ACK_SINCE = '2026-11-18';
 
 /**
  * Strict, like the server: ISO or dd/mm/yyyy, nothing else. new Date() reads
@@ -57,16 +59,17 @@ function ymd(d) {
          String(d.getDate()).padStart(2, '0');
 }
 
-/** { days, label, color } — days is null when there is no usable date. */
+/** { days, label, color, level } — days is null when there is no usable date. */
 function dueOf(t) {
   const raw = String(t.DueDate || '').trim();
   const d = strictDate(raw);
-  if (!d) return { days: null, label: raw ? 'Date unreadable' : 'No date', color: T.faint };
+  if (!d) return { days: null, label: raw ? 'Date unreadable' : 'No date', color: T.faint, level: 0 };
   const days = Math.round((d - midnight()) / 86400000);
-  if (days < 0) return { days, label: -days + (days === -1 ? ' day late' : ' days late'), color: T.red };
-  if (days === 0) return { days, label: 'Today', color: T.amber };
-  if (days === 1) return { days, label: 'Tomorrow', color: T.text };
-  return { days, label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
+  const level = days <= -5 ? 2 : days <= -3 ? 1 : 0;
+  if (days < 0) return { days, level, label: -days + (days === -1 ? ' day late' : ' days late'), color: T.red };
+  if (days === 0) return { days, level, label: 'Today', color: T.amber };
+  if (days === 1) return { days, level, label: 'Tomorrow', color: T.text };
+  return { days, level, label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }),
            color: days <= 7 ? T.text : T.sub };
 }
 
@@ -77,6 +80,14 @@ function byDue(a, b) {
   if (x === null) return 1;
   if (y === null) return -1;
   return x - y;
+}
+
+/** Given to this person by someone else, on or after ACK_SINCE, not yet confirmed. */
+function needsAck(t, me) {
+  if (isClosed(t) || String(t.AckAt || '').trim()) return false;
+  const by = norm(t.CreatedBy), to = norm(whoOf(t));
+  if (!by || !to || by === to || to !== me) return false;
+  return String(t.CreatedDate || '').slice(0, 10) >= ACK_SINCE;
 }
 
 function phoneOf(e) {
@@ -123,6 +134,15 @@ const btn = (primary, disabled) => ({
   display: 'block'
 });
 
+const field = {
+  width: '100%', boxSizing: 'border-box', background: T.card, color: T.text,
+  border: '1px solid ' + T.line, borderRadius: 13, padding: '12px 13px',
+  fontSize: 14.5, outline: 'none', marginBottom: 12, fontFamily: 'inherit'
+};
+
+const label = { fontSize: 10.5, color: T.faint, letterSpacing: '0.08em',
+                textTransform: 'uppercase', margin: '4px 2px 7px' };
+
 // ── Screen ─────────────────────────────────────────────────────────────────
 
 export default function Tasks({ user, isMgr, online, onQueued }) {
@@ -132,8 +152,10 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
   const [view, setView] = React.useState(isMgr ? 'team' : 'open');
   const [who, setWho] = React.useState('');
   const [adding, setAdding] = React.useState(null);     // null, or { assignee }
-  const [closing, setClosing] = React.useState({});
+  const [open, setOpen] = React.useState(null);         // null, or { task, mode }
+  const [busy, setBusy] = React.useState({});
   const [msg, setMsg] = React.useState({});             // per-person result line
+  const [flash, setFlash] = React.useState('');         // "saved on this phone"
 
   const load = React.useCallback(() => {
     const key = isMgr ? 'tasks:mgr' : 'tasks';
@@ -167,31 +189,48 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
   emps.forEach(e => { empByName[norm(e.Name || e.name)] = e; });
   const team = data.team;
 
-  const open = tasks.filter(t => !isClosed(t) && textOf(t));
+  const openList = tasks.filter(t => !isClosed(t) && textOf(t));
   const done = tasks.filter(t => isClosed(t)).sort((a, b) =>
     String(b.ClosureDate || b.LastModified || '').localeCompare(String(a.ClosureDate || a.LastModified || '')));
   const blank = tasks.filter(t => !isClosed(t) && !textOf(t)).length;
+  const waitingMine = openList.filter(t => needsAck(t, me));
 
   const scoped = list => {
     if (!isMgr) return list.filter(t => norm(whoOf(t)) === me || !whoOf(t));
     return who ? list.filter(t => norm(whoOf(t)) === norm(who)) : list;
   };
 
-  const close = async (t) => {
-    const id = t.TaskID;
-    setClosing(c => ({ ...c, [id]: true }));
-    const args = [id, { Status: 'Closed' }, user.name];
-    try {
-      if (!navigator.onLine) throw new Error('offline');
-      await call('updateTask', ...args);
-    } catch {
-      await enqueue('updateTask', args, 'Close task — ' + textOf(t).slice(0, 40));
+  /**
+   * Run a task action. Your own work may wait on the phone without signal;
+   * reassigning someone else's work needs the server there and then.
+   */
+  const act = async (name, args, label, queueable) => {
+    const id = args[0];
+    const keep = async () => {
+      await enqueue(name, args, label);
       onQueued && onQueued();
+      setFlash('Saved on this phone — it goes to the ERP when you have signal. Until then it still shows here as before.');
+      return { success: true, queued: true };
+    };
+    setBusy(b => ({ ...b, [id]: true }));
+    try {
+      if (!navigator.onLine) {
+        if (!queueable) return { success: false, error: 'Needs signal.' };
+        return await keep();
+      }
+      const r = await call(name, ...args);
+      if (r && r.success !== false) setFlash('');
+      return r || { success: false, error: 'No answer from the server.' };
+    } catch (e) {
+      if (!queueable) return { success: false, error: e.message || String(e) };
+      return await keep();
     } finally {
-      setClosing(c => ({ ...c, [id]: false }));
+      setBusy(b => ({ ...b, [id]: false }));
       load();
     }
   };
+
+  const gotIt = t => act('ackTask', [t.TaskID], 'Got it — ' + textOf(t).slice(0, 40), true);
 
   const emailPerson = async (name) => {
     if (!online) { setMsg(m => ({ ...m, [name]: 'Needs signal — the ERP sends the email.' })); return; }
@@ -211,9 +250,9 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
   return (
     <>
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }}>
-        {views.map(([id, label]) => (
+        {views.map(([id, lbl]) => (
           <Pill key={id} on={view === id} onClick={() => { setView(id); if (id === 'team') setWho(''); }}>
-            {label}{id === 'open' ? ' ' + scoped(open).length : ''}
+            {lbl}{id === 'open' ? ' ' + scoped(openList).length : ''}
           </Pill>
         ))}
         {who && view !== 'team' && (
@@ -223,24 +262,38 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
 
       <StaleNote at={stale} error={staleErr} onRetry={load} />
       {data.loadErr && <Note tone="bad">Could not load tasks. {data.loadErr}</Note>}
+      {flash && <Note tone="warn">{flash}</Note>}
+
+      {waitingMine.length > 0 && view !== 'done' && (
+        <Note tone="warn">
+          {waitingMine.length === 1 ? 'A task was' : waitingMine.length + ' tasks were'} given to you.
+          Tap Got it so they know you have seen it.
+        </Note>
+      )}
 
       {view === 'team' && (
-        <TeamView team={team} teamErr={data.teamErr} open={open} blank={blank} me={me}
+        <TeamView team={team} teamErr={data.teamErr} blank={blank} me={me}
                   msg={msg} onEmail={emailPerson}
                   onPick={name => { setWho(name); setView('open'); }}
                   onGive={name => setAdding({ assignee: name })} />
       )}
 
       {view === 'open' && (
-        <TaskList list={scoped(open).sort(byDue)} isMgr={isMgr} showWho={isMgr && !who}
-                  me={me} empByName={empByName} user={user} closing={closing} onClose={close}
+        <TaskList list={scoped(openList).sort(byDue)} isMgr={isMgr} showWho={isMgr && !who}
+                  me={me} busy={busy} onOpen={(t, mode) => setOpen({ task: t, mode })} onGotIt={gotIt}
                   empty={who ? first(who) + ' has nothing open.' : isMgr ? 'No open tasks.' : 'Nothing assigned to you.'} />
       )}
 
       {view === 'done' && (
         <TaskList list={scoped(done).slice(0, 60)} done isMgr={isMgr} showWho={isMgr && !who}
-                  me={me} empByName={empByName} user={user} closing={closing}
+                  me={me} busy={busy} onOpen={(t, mode) => setOpen({ task: t, mode })}
                   empty="Nothing closed yet." />
+      )}
+
+      {open && (
+        <TaskSheet task={open.task} startMode={open.mode} user={user} isMgr={isMgr} me={me}
+                   emps={emps} empByName={empByName} online={online} act={act}
+                   onClose={() => setOpen(null)} />
       )}
 
       {adding && (
@@ -262,7 +315,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
 
 // ── Team ───────────────────────────────────────────────────────────────────
 
-function TeamView({ team, teamErr, open, blank, me, msg, onEmail, onPick, onGive }) {
+function TeamView({ team, teamErr, blank, me, msg, onEmail, onPick, onGive }) {
   if (!team) {
     return (
       <Note tone="warn">
@@ -274,28 +327,37 @@ function TeamView({ team, teamErr, open, blank, me, msg, onEmail, onPick, onGive
   const busy = team.people.filter(p => p.open > 0);
   const idle = team.people.filter(p => !p.open);
   const stray = (team.unmatched || []).reduce((n, u) => n + u.count, 0);
+  const u = team.unowned || {};
+  const many = (n, one, more) => n + ' ' + (n === 1 ? one : more);
+  const unowned = [u.leads && many(u.leads, 'lead', 'leads'), u.docs && many(u.docs, 'tender document', 'tender documents'),
+                   u.tenders && many(u.tenders, 'bid closing this week', 'bids closing this week'),
+                   u.complaints && many(u.complaints, 'complaint', 'complaints')]
+                  .filter(Boolean);
 
   return (
     <>
       <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, margin: '0 2px 12px' }}>
         {team.on
-          ? 'Each person with an email gets their own list at about 8 am.'
-          : 'Daily reminder emails are off — nothing goes to staff by itself. WhatsApp below opens with their list typed in.'}
+          ? 'Each person’s list goes at 10:30, Monday to Saturday; you get the WhatsApp buttons by email then.'
+          : 'The 10:30 lists are off — nothing goes to staff by itself. WhatsApp below opens with their whole list typed in.'}
+        {' '}Counts cover tasks, follow-ups, complaints, tender documents and bids.
       </div>
 
-      {!busy.length && <Note>Nobody has an open task.</Note>}
+      {!busy.length && <Note>Nobody has anything due this week.</Note>}
 
       {busy.map(p => (
         <div key={p.name} style={{ background: T.card, borderRadius: 18, padding: '13px 14px', marginBottom: 9 }}>
           <div onClick={() => onPick(p.name)} style={{ cursor: 'pointer' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0, fontSize: 15, color: T.text }}>{p.name}</div>
-              <div style={{ fontSize: 11.5, color: T.faint }}>See tasks ›</div>
+              <div style={{ fontSize: 11.5, color: T.faint }}>Tasks ›</div>
             </div>
-            <div style={{ fontSize: 12.5, marginTop: 4, color: T.sub }}>
+            <div style={{ fontSize: 12.5, marginTop: 4, color: T.sub, lineHeight: 1.5 }}>
               {p.open} open
               {p.overdue > 0 && <span style={{ color: T.red }}> · {p.overdue} late</span>}
+              {p.esc2 > 0 && <span style={{ color: T.red }}> · {p.esc2} at 5+ days</span>}
               {p.dueToday > 0 && <span style={{ color: T.amber }}> · {p.dueToday} today</span>}
+              {p.unacked > 0 && <span style={{ color: T.blue }}> · {p.unacked} waiting for Got it</span>}
             </div>
             <div style={{ fontSize: 11.5, marginTop: 3, color: p.reached ? T.green : T.faint }}>
               {p.reached || 'Not reminded today'}
@@ -308,15 +370,15 @@ function TeamView({ team, teamErr, open, blank, me, msg, onEmail, onPick, onGive
               </button>
             </div>
           ) : (
-          <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
-            {p.waLink
-              ? <a href={p.waLink} target="_blank" rel="noopener noreferrer"
-                   onClick={() => logTap(p.name, 'manual')} style={btn(true)}>WhatsApp</a>
-              : <span style={btn(false, true)}>No mobile no.</span>}
-            {p.hasEmail
-              ? <button onClick={() => onEmail(p.name)} style={btn(false)}>Email</button>
-              : <span style={btn(false, true)}>No email</span>}
-          </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
+              {p.waLink
+                ? <a href={p.waLink} target="_blank" rel="noopener noreferrer"
+                     onClick={() => logTap(p.name, 'manual')} style={btn(true)}>WhatsApp</a>
+                : <span style={btn(false, true)}>No mobile no.</span>}
+              {p.hasEmail
+                ? <button onClick={() => onEmail(p.name)} style={btn(false)}>Email</button>
+                : <span style={btn(false, true)}>No own email</span>}
+            </div>
           )}
           {msg[p.name] && (
             <div style={{ fontSize: 11.5, color: T.sub, marginTop: 8, lineHeight: 1.45 }}>{msg[p.name]}</div>
@@ -327,7 +389,7 @@ function TeamView({ team, teamErr, open, blank, me, msg, onEmail, onPick, onGive
       {idle.length > 0 && (
         <div style={{ margin: '16px 2px 6px' }}>
           <div style={{ fontSize: 10, color: T.faint, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-            Nothing open
+            Nothing due
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
             {idle.map(p => (
@@ -340,46 +402,45 @@ function TeamView({ team, teamErr, open, blank, me, msg, onEmail, onPick, onGive
         </div>
       )}
 
-      {(stray > 0 || team.unassigned > 0 || blank > 0) && (
-        <div style={{ marginTop: 14 }}>
-          {stray > 0 && (
-            <Note tone="warn">
-              {stray} open task{stray === 1 ? ' is' : 's are'} assigned to a name no current employee has
-              ({team.unmatched.map(u => u.name + ' ' + u.count).join(', ')}). They reach nobody until reassigned.
-            </Note>
-          )}
-          {team.unassigned > 0 && (
-            <Note>{team.unassigned} open task{team.unassigned === 1 ? ' has' : 's have'} nobody assigned.</Note>
-          )}
-          {blank > 0 && (
-            <Note>
-              {blank} open task{blank === 1 ? ' has' : 's have'} no description — added from the phone
-              before 18 Nov, when this form lost the text. They cannot be recovered; close them on the desktop
-              and re-enter what they were.
-            </Note>
-          )}
-        </div>
-      )}
+      <div style={{ marginTop: 14 }}>
+        {unowned.length > 0 && (
+          <Note tone="warn">Nobody owns {unowned.join(', ')}. Until someone does, no list mentions them.</Note>
+        )}
+        {stray > 0 && (
+          <Note tone="warn">
+            {stray} open item{stray === 1 ? ' is' : 's are'} held by a name no current employee has
+            ({team.unmatched.map(x => x.name + ' ' + x.count).join(', ')}). They reach nobody until reassigned.
+          </Note>
+        )}
+        {team.unassigned > 0 && (
+          <Note>{team.unassigned} open task{team.unassigned === 1 ? ' has' : 's have'} nobody assigned.</Note>
+        )}
+        {blank > 0 && (
+          <Note>
+            {blank} open task{blank === 1 ? ' has' : 's have'} no description — added from the phone
+            before 18 Nov, when this form lost the text. Close them on the desktop and re-enter what they were.
+          </Note>
+        )}
+      </div>
     </>
   );
 }
 
 // ── Lists ──────────────────────────────────────────────────────────────────
 
-function TaskList({ list, done, isMgr, showWho, me, empByName, user, closing, onClose, empty }) {
+function TaskList({ list, done, isMgr, showWho, me, busy, onOpen, onGotIt, empty }) {
   if (!list.length) return <Note>{empty}</Note>;
   return list.slice(0, 200).map((t, i) => {
     const d = dueOf(t);
     const owner = whoOf(t);
     const mine = norm(owner) === me;
-    const phone = isMgr && !mine && !done ? phoneOf(empByName[norm(owner)]) : '';
-    const remind = phone ? wa(phone,
-      'Hi ' + first(owner) + ' — reminder from ' + first(user.name) + ':\n' + textOf(t) +
-      '\n(' + (d.days === null ? 'no due date' : d.label.toLowerCase()) + ')\n\nMark it done in the app: ' + APP_URL) : '';
+    const ack = !done && needsAck(t, me);
+    const moves = parseInt(t.DueMoves, 10) || 0;
     return (
-      <div key={t.TaskID || i} style={{
+      <div key={t.TaskID || i} onClick={() => onOpen(t, 'view')} style={{
         background: T.card, borderRadius: 16, padding: '12px 14px', marginBottom: 8,
-        display: 'flex', gap: 10, alignItems: 'flex-start'
+        display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer',
+        borderLeft: d.level === 2 && !done ? '3px solid ' + T.red : 'none'
       }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, lineHeight: 1.4, color: done ? T.faint : T.text,
@@ -388,36 +449,196 @@ function TaskList({ list, done, isMgr, showWho, me, empByName, user, closing, on
             {!done && <span style={{ color: d.color }}>{d.label}</span>}
             {done && <span>Closed {String(t.ClosureDate || '').slice(0, 10)}</span>}
             {norm(t.Priority) === 'high' && <span style={{ color: T.amber }}> · High</span>}
+            {moves > 0 && !done && <span> · moved {moves}×</span>}
             {showWho && <span> · {owner || 'nobody'}</span>}
+            {ack && <span style={{ color: T.blue }}> · new</span>}
           </div>
-          {remind && (
-            <a href={remind} target="_blank" rel="noopener noreferrer"
-               onClick={() => logTap(owner, 'task')}
-               style={{ display: 'inline-block', marginTop: 7, fontSize: 12, color: T.accent,
-                        textDecoration: 'none' }}>Remind on WhatsApp ↗</a>
+          {done && t.DoneNote && (
+            <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4, lineHeight: 1.4 }}>{t.DoneNote}</div>
           )}
         </div>
-        {!done && (
-          <button disabled={!!closing[t.TaskID]} onClick={() => onClose(t)} style={{
+        {!done && ack && (
+          <button disabled={!!busy[t.TaskID]} onClick={e => { e.stopPropagation(); onGotIt(t); }} style={{
+            background: T.blueBg, color: T.blue, border: 'none', borderRadius: 10,
+            padding: '8px 11px', fontSize: 12, flexShrink: 0, cursor: 'pointer'
+          }}>{busy[t.TaskID] ? '…' : 'Got it'}</button>
+        )}
+        {!done && !ack && (mine || isMgr) && (
+          <button disabled={!!busy[t.TaskID]} onClick={e => { e.stopPropagation(); onOpen(t, 'done'); }} style={{
             background: T.greenBg, color: T.green, border: 'none', borderRadius: 10,
             padding: '8px 11px', fontSize: 12, flexShrink: 0, cursor: 'pointer'
-          }}>{closing[t.TaskID] ? '…' : 'Done'}</button>
+          }}>{busy[t.TaskID] ? '…' : 'Done'}</button>
         )}
       </div>
     );
   });
 }
 
+// ── One task ───────────────────────────────────────────────────────────────
+
+function TaskSheet({ task, startMode, user, isMgr, me, emps, empByName, online, act, onClose }) {
+  const [mode, setMode] = React.useState(startMode || 'view');     // view | done | move | reassign | told
+  const [note, setNote] = React.useState('');
+  const [date, setDate] = React.useState(ymd(midnight(1)));
+  const [reason, setReason] = React.useState('');
+  const [to, setTo] = React.useState('');
+  const [err, setErr] = React.useState('');
+  const [working, setWorking] = React.useState(false);
+  const [told, setTold] = React.useState(null);
+
+  const t = task;
+  const d = dueOf(t);
+  const owner = whoOf(t);
+  const mine = norm(owner) === me;
+  const closed = isClosed(t);
+  const ack = needsAck(t, me);
+  const canEdit = !closed && (mine || isMgr);
+  const people = emps.map(e => String(e.Name || e.name || '').trim()).filter(Boolean)
+                     .filter(n => norm(n) !== norm(owner));
+  const phone = isMgr && !mine && !closed ? phoneOf(empByName[norm(owner)]) : '';
+  const remind = phone ? wa(phone,
+    'Hi ' + first(owner) + ' — reminder from ' + first(user.name) + ':\n' + textOf(t) +
+    '\n(' + (d.days === null ? 'no due date' : d.label.toLowerCase()) + ')\n\nMark it done in the app: ' + APP_URL) : '';
+
+  const run = async (name, args, lbl, queueable, after) => {
+    setErr(''); setWorking(true);
+    const r = await act(name, args, lbl, queueable);
+    setWorking(false);
+    if (!r || r.success === false) { setErr((r && r.error) || 'Could not save.'); return; }
+    if (after) after(r); else onClose();
+  };
+
+  const quick = [['Tomorrow', 1], ['In 3 days', 3], ['In a week', 7]];
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontSize: 17, color: T.text, lineHeight: 1.35 }}>{textOf(t) || '(no description)'}</div>
+      <div style={{ fontSize: 12, color: T.sub, marginTop: 6, lineHeight: 1.6 }}>
+        {closed ? 'Closed ' + String(t.ClosureDate || '').slice(0, 10) : <span style={{ color: d.color }}>{d.label}</span>}
+        {' · '}{owner || 'nobody'}{t.Priority ? ' · ' + t.Priority : ''}
+        <br />
+        Given by {t.CreatedBy || 'unknown'}{t.CreatedDate ? ' on ' + String(t.CreatedDate).slice(0, 10) : ''}
+        {t.AckAt ? ' · Got it ' + String(t.AckAt).slice(0, 16) : ack ? ' · waiting for Got it' : ''}
+        {parseInt(t.DueMoves, 10) > 0 ? ' · date moved ' + t.DueMoves + '×' : ''}
+      </div>
+      {closed && t.DoneNote && (
+        <div style={{ background: T.card, borderRadius: 12, padding: '10px 12px', marginTop: 12,
+                      fontSize: 13, color: T.text, lineHeight: 1.5 }}>{t.DoneNote}</div>
+      )}
+      {d.level === 2 && !closed && isMgr && (
+        <Note tone="bad">5+ days late. Extend it, hand it to someone else, or close it with a note.</Note>
+      )}
+
+      <div style={{ height: 14 }} />
+
+      {mode === 'view' && !closed && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {ack && (
+            <button disabled={working} onClick={() => run('ackTask', [t.TaskID], 'Got it — ' + textOf(t).slice(0, 40), true)}
+                    style={{ ...btn(true, working), padding: '13px 0', fontSize: 14 }}>Got it</button>
+          )}
+          {canEdit && (
+            <button onClick={() => setMode('done')} style={{ ...btn(!ack), padding: '13px 0', fontSize: 14 }}>
+              {mine ? 'Done' : 'Close it'}
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={() => setMode('move')} style={{ ...btn(false), padding: '13px 0', fontSize: 14 }}>Move date</button>
+          )}
+          {isMgr && !mine && (
+            <button onClick={() => setMode('reassign')} style={{ ...btn(false), padding: '13px 0', fontSize: 14 }}>
+              Give to someone else
+            </button>
+          )}
+          {remind && (
+            <a href={remind} target="_blank" rel="noopener noreferrer" onClick={() => logTap(owner, 'task')}
+               style={{ ...btn(false), padding: '13px 0', fontSize: 14 }}>Remind {first(owner)} on WhatsApp</a>
+          )}
+        </div>
+      )}
+
+      {mode === 'done' && (
+        <>
+          <div style={label}>What was done?</div>
+          <textarea autoFocus style={{ ...field, minHeight: 80, resize: 'vertical' }}
+                    placeholder="e.g. Sent by DTDC, docket 4471 — they confirmed receipt"
+                    value={note} onChange={e => setNote(e.target.value)} />
+          <button disabled={working || !note.trim()}
+                  onClick={() => run('closeTask', [t.TaskID, note.trim()], 'Done — ' + textOf(t).slice(0, 40), true)}
+                  style={{ ...btn(true, working || !note.trim()), width: '100%', padding: '13px 0', fontSize: 14 }}>
+            {working ? 'Saving…' : 'Mark done'}
+          </button>
+        </>
+      )}
+
+      {mode === 'move' && (
+        <>
+          <div style={label}>New date</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
+            {quick.map(([l, n]) => (
+              <Pill key={l} on={date === ymd(midnight(n))} onClick={() => setDate(ymd(midnight(n)))}>{l}</Pill>
+            ))}
+          </div>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...field, colorScheme: 'dark' }} />
+          <div style={label}>Why is it moving?</div>
+          <input style={field} placeholder="e.g. Waiting for the principal's signature"
+                 value={reason} onChange={e => setReason(e.target.value)} />
+          <div style={{ fontSize: 11.5, color: T.faint, margin: '-4px 2px 12px' }}>
+            The manager sees every move and the reason.
+          </div>
+          <button disabled={working || !reason.trim() || !date}
+                  onClick={() => run('moveTaskDue', [t.TaskID, date, reason.trim()], 'Move date — ' + textOf(t).slice(0, 40), true)}
+                  style={{ ...btn(true, working || !reason.trim() || !date), width: '100%', padding: '13px 0', fontSize: 14 }}>
+            {working ? 'Saving…' : 'Move date'}
+          </button>
+        </>
+      )}
+
+      {mode === 'reassign' && (
+        <>
+          <div style={label}>Give it to</div>
+          <select value={to} onChange={e => setTo(e.target.value)} style={field}>
+            <option value="">Choose a person</option>
+            {people.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          {!online && <Note tone="warn">Needs signal — handing work over is not saved on the phone.</Note>}
+          <button disabled={working || !to || !online}
+                  onClick={() => run('reassignTask', [t.TaskID, to], 'Reassign', false,
+                                     r => { setTold({ name: to, notify: r.notify || null }); setMode('told'); })}
+                  style={{ ...btn(true, working || !to || !online), width: '100%', padding: '13px 0', fontSize: 14 }}>
+            {working ? 'Saving…' : 'Give it to ' + (first(to) || '…')}
+          </button>
+        </>
+      )}
+
+      {mode === 'told' && told && (
+        <>
+          <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.55, marginBottom: 14 }}>
+            Now with {told.name}. They need to tap Got it.
+            {told.notify && told.notify.channel === 'email' ? ' They have been emailed.' : ''}
+          </div>
+          {told.notify && told.notify.waLink && (
+            <a href={told.notify.waLink} target="_blank" rel="noopener noreferrer"
+               onClick={() => logTap(told.name, 'assigned')}
+               style={{ ...btn(true), padding: '13px 0', fontSize: 14, marginBottom: 10 }}>
+              Tell {first(told.name)} on WhatsApp
+            </a>
+          )}
+          <button onClick={onClose} style={{ ...btn(false), width: '100%', padding: '13px 0', fontSize: 14 }}>Done</button>
+        </>
+      )}
+
+      {err && <div style={{ fontSize: 12.5, color: T.red, margin: '10px 2px 0' }}>{err}</div>}
+      {mode !== 'view' && mode !== 'told' && (
+        <button onClick={() => { setMode('view'); setErr(''); }} style={{
+          background: 'none', border: 'none', color: T.faint, fontSize: 12.5, marginTop: 12, cursor: 'pointer'
+        }}>‹ Back</button>
+      )}
+    </Sheet>
+  );
+}
+
 // ── New task ───────────────────────────────────────────────────────────────
-
-const field = {
-  width: '100%', boxSizing: 'border-box', background: T.card, color: T.text,
-  border: '1px solid ' + T.line, borderRadius: 13, padding: '12px 13px',
-  fontSize: 14.5, outline: 'none', marginBottom: 12, fontFamily: 'inherit'
-};
-
-const label = { fontSize: 10.5, color: T.faint, letterSpacing: '0.08em',
-                textTransform: 'uppercase', margin: '4px 2px 7px' };
 
 function TaskAdd({ user, isMgr, online, emps, preset, onQueued, onClose, onSaved }) {
   const people = emps.map(e => String(e.Name || e.name || '').trim()).filter(Boolean);
@@ -462,7 +683,7 @@ function TaskAdd({ user, isMgr, online, emps, preset, onQueued, onClose, onSaved
           {after.offline ? 'Saved on this phone.' : 'Saved.'}
         </div>
         <div style={{ fontSize: 13, color: T.sub, lineHeight: 1.55, marginBottom: 16 }}>
-          {forMe ? 'It is on your list.' : 'Assigned to ' + after.assignee + '. '}
+          {forMe ? 'It is on your list.' : 'Given to ' + after.assignee + '. They need to tap Got it. '}
           {!forMe && after.offline && 'It goes to the ERP when you have signal; tell them yourself in the meantime.'}
           {!forMe && !after.offline && (n.channel === 'email'
             ? 'They have been emailed.'

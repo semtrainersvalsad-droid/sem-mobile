@@ -164,17 +164,49 @@ function Quotes() {
   ));
 }
 
+/**
+ * Ends every sign-in on every phone at once — for a lost phone or someone
+ * leaving. Managers only; the server checks again. Signs this phone out too.
+ */
+function SignEveryoneOut() {
+  const [stage, setStage] = React.useState('idle');     // idle | confirm | busy | done
+  const [msg, setMsg] = React.useState('');
+  const go = async () => {
+    setStage('busy');
+    try {
+      const r = await call('signEveryoneOut');
+      setMsg(r && r.success ? (r.message || 'Done.') : ((r && r.error) || 'Could not do it.'));
+    } catch (e) { setMsg(e.message || String(e)); }
+    setStage('done');
+  };
+  return (
+    <Card>
+      <div style={{ fontSize: '0.86rem', fontWeight: 700 }}>Sign everyone out</div>
+      <div style={{ fontSize: '0.76rem', color: '#99A3B0', lineHeight: 1.55, margin: '0.3rem 0 0.7rem' }}>
+        Ends every sign-in on every phone and computer, including yours. Use it for a lost
+        phone or when someone leaves.
+      </div>
+      {stage === 'idle' && <Btn outline color="#FF6B61" onClick={() => setStage('confirm')}>Sign everyone out</Btn>}
+      {stage === 'confirm' && <Btn color="#FF6B61" onClick={go}>Yes — sign everyone out now</Btn>}
+      {stage === 'busy' && <Btn disabled>Signing everyone out…</Btn>}
+      {stage === 'done' && <div style={{ fontSize: '0.8rem', color: '#FFB443' }}>{msg}</div>}
+    </Card>
+  );
+}
+
 function About({ user }) {
+  const isManager = String(user.role || '').toLowerCase() === 'manager';
   return (
     <>
       <Card>
         <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>{user.name}</div>
         <div style={{ fontSize: '0.78rem', color: '#6B7280' }}>{user.role || ''}</div>
       </Card>
+      {isManager && <SignEveryoneOut />}
       <Card>
         <div style={{ fontSize: '0.78rem', color: '#6B7280', lineHeight: 1.6 }}>
           SEM Trainers mobile · v1<br />
-          Signed in for 24 hours at a time.<br />
+          Stays signed in for 30 days on this phone.<br />
           Leads, tasks and call outcomes can be entered without signal; tenders,
           approvals and payments need a connection and will say so.
         </div>

@@ -70,10 +70,13 @@ export default function Today({ user, isMgr, online, onGoTab }) {
     let dead = false;
     const key = 'today:' + (isMgr ? 'mgr' : 'emp');
     cached(key, async () => {
-      const calls = [['getTasks', {}]];
+      // getMyDay is the same list the person's 10:30 WhatsApp carries: tasks,
+      // follow-ups, complaints, tender documents and bids, in one order.
+      const calls = [['getTasks', {}], ['getMyDay']];
       if (isMgr) calls.push(['getMobileDashboard', false]);
-      const [tasks, dash] = await batch(calls);
-      return { tasks: Array.isArray(tasks) ? tasks : [], dash: dash || null };
+      const [tasks, myday, dash] = await batch(calls);
+      return { tasks: Array.isArray(tasks) ? tasks : [],
+               myday: myday && myday.success ? myday : null, dash: dash || null };
     }, (v, m) => {
       if (dead) return;
       setData(v);
@@ -133,9 +136,16 @@ export default function Today({ user, isMgr, online, onGoTab }) {
     return d && !isNaN(d) && d < midnight;
   });
 
+  // An older server has no getMyDay; then the task list below stands in.
+  const md = data.myday && data.myday.found ? data.myday : null;
+  const mdCount = md ? md.groups.reduce((n, g) => n + g.items.length, 0) : 0;
+
   const headline = !isMgr
-    ? (tasks.length ? tasks.length + (tasks.length === 1 ? ' task today.' : ' tasks today.')
-                    : 'Nothing assigned to you.')
+    ? (md
+        ? (mdCount ? (md.counts.late ? md.counts.late + ' late, ' : '') + mdCount + ' to do this week.'
+                   : 'Nothing due this week.')
+        : (tasks.length ? tasks.length + (tasks.length === 1 ? ' task today.' : ' tasks today.')
+                        : 'Nothing assigned to you.'))
     : needs.length
       ? (needs.length === 1 ? 'One thing needs you.' : needs.length + ' things need you.')
       : (dash.needsYou ? 'Nothing needs you.' : 'Still loading your figures.');
@@ -274,8 +284,45 @@ export default function Today({ user, isMgr, online, onGoTab }) {
         </div>
       )}
 
-      {/* ── Tasks, only when there are any ───────────────────────────────── */}
-      {tasks.length > 0 && (
+      {/* ── Your day: everything you own that is due, late first ───────── */}
+      {md && mdCount > 0 && (
+        <div style={{ padding: '24px 4px 0' }}>
+          <Eyebrow>Your day{md.counts.late ? ' · ' + md.counts.late + ' late' : ''}</Eyebrow>
+          {md.groups.map(g => (
+            <div key={g.key} style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 10.5, margin: '4px 2px 6px',
+                            color: g.key === 'overdue' ? T.red : g.key === 'today' ? T.amber : T.faint }}>
+                {g.label}
+              </div>
+              {g.items.slice(0, 12).map(it => (
+                <div key={it.kind + it.id}
+                     onClick={() => onGoTab && onGoTab(it.kind === 'task' ? 'tasks' : it.kind === 'followup' ? 'leads' : 'all')}
+                     style={{ background: T.card, borderRadius: 15, padding: '12px 14px', marginBottom: 7, cursor: 'pointer',
+                              borderLeft: it.level === 2 ? '3px solid ' + T.red : 'none' }}>
+                  <div style={{ fontSize: 13, color: T.text, lineHeight: 1.35 }}>
+                    {it.kind !== 'task' && <span style={{ color: T.faint }}>{it.type}: </span>}{it.text}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: it.days !== null && it.days < 0 ? T.red : T.faint, marginTop: 3 }}>
+                    {it.dueLabel}{it.ackNeeded ? ' · tap Got it in Tasks' : ''}
+                  </div>
+                </div>
+              ))}
+              {g.items.length > 12 && (
+                <div style={{ fontSize: 11, color: T.faint, margin: '0 2px 6px' }}>+{g.items.length - 12} more</div>
+              )}
+            </div>
+          ))}
+          {(md.counts.noDateLeads > 0 || md.counts.noDateDocs > 0) && (
+            <div style={{ fontSize: 11.5, color: T.faint, margin: '8px 2px 0', lineHeight: 1.5 }}>
+              {md.counts.noDateLeads > 0 && md.counts.noDateLeads + ' of your leads have no next call date. '}
+              {md.counts.noDateDocs > 0 && md.counts.noDateDocs + ' tender documents have no due date.'}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tasks, when the server is too old for getMyDay ─────────────── */}
+      {!md && tasks.length > 0 && (
         <div style={{ padding: '24px 4px 0' }}>
           <Eyebrow>
             Your tasks{overdue.length ? ' · ' + overdue.length + ' overdue' : ''}
