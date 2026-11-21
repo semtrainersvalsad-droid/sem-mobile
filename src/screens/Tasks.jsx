@@ -85,6 +85,7 @@ function byDue(a, b) {
 /** Given to this person by someone else, on or after ACK_SINCE, not yet confirmed. */
 function needsAck(t, me) {
   if (isClosed(t) || String(t.AckAt || '').trim()) return false;
+  if (norm(t.Category) === 'routine') return false;      // agreed once, when set up
   const by = norm(t.CreatedBy), to = norm(whoOf(t));
   if (!by || !to || by === to || to !== me) return false;
   return String(t.CreatedDate || '').slice(0, 10) >= ACK_SINCE;
@@ -244,7 +245,7 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
     }
   };
 
-  const views = isMgr ? [['team', 'Team'], ['open', 'Open'], ['done', 'Done']]
+  const views = isMgr ? [['team', 'Team'], ['open', 'Open'], ['done', 'Done'], ['routine', 'Routine']]
                       : [['open', 'My tasks'], ['done', 'Done']];
 
   return (
@@ -290,6 +291,8 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
                   empty="Nothing closed yet." />
       )}
 
+      {view === 'routine' && isMgr && <RoutineView emps={emps} online={online} />}
+
       {open && (
         <TaskSheet task={open.task} startMode={open.mode} user={user} isMgr={isMgr} me={me}
                    emps={emps} empByName={empByName} online={online} act={act}
@@ -302,14 +305,175 @@ export default function Tasks({ user, isMgr, online, onQueued }) {
                  onSaved={() => { load(); }} />
       )}
 
-      <button onClick={() => setAdding({ assignee: '' })} style={{
-        position: 'fixed', right: 18, bottom: 88, zIndex: 20,
-        background: T.accent, color: T.onAccent, border: 'none',
-        borderRadius: 999, padding: '14px 20px', fontSize: 14,
-        boxShadow: '0 6px 20px rgba(0,0,0,0.45)', cursor: 'pointer'
-      }}>+ Task</button>
+      {view !== 'routine' && (
+        <button onClick={() => setAdding({ assignee: '' })} style={{
+          position: 'fixed', right: 18, bottom: 88, zIndex: 20,
+          background: T.accent, color: T.onAccent, border: 'none',
+          borderRadius: 999, padding: '14px 20px', fontSize: 14,
+          boxShadow: '0 6px 20px rgba(0,0,0,0.45)', cursor: 'pointer'
+        }}>+ Task</button>
+      )}
       <div style={{ height: 70 }} />
     </>
+  );
+}
+
+// ── Routine jobs ───────────────────────────────────────────────────────────
+
+const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * The manager's routine jobs, by person. A routine makes the same task for the
+ * same person on its days; it lands in their 10:30 list, Done needs a note, and
+ * a copy left undone escalates like any task. One open copy at a time, so a
+ * neglected routine is one task getting later — not a pile.
+ */
+function RoutineView({ emps, online }) {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState('');
+  const [edit, setEdit] = React.useState(null);           // null | {} for new | a routine
+  const load = React.useCallback(() => {
+    setErr('');
+    cached('routines', () => call('getRoutines'), v => setData(v))
+      .catch(e => setErr(e.message || String(e)));
+  }, []);
+  React.useEffect(load, [load]);
+
+  if (!data && !err) return <Spin />;
+  if (data && data.success === false) return <Note tone="warn">{data.error}</Note>;
+  const list = (data && data.routines) || [];
+  const byPerson = {};
+  list.forEach(r => { (byPerson[r.assignee] = byPerson[r.assignee] || []).push(r); });
+
+  return (
+    <>
+      <div style={{ fontSize: 12, color: T.sub, lineHeight: 1.5, margin: '0 2px 12px' }}>
+        Each routine makes the same task for one person on its days. It arrives in their 10:30 list,
+        Done needs a note, and an undone copy gets later and escalates. No new copy until the last one is done.
+      </div>
+      {err && <Note tone="bad">Could not load routines. {err}</Note>}
+      {!list.length && !err && <Note>No routine jobs yet.</Note>}
+      {Object.keys(byPerson).sort().map(name => (
+        <div key={name} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10.5, color: T.faint, letterSpacing: '0.08em', textTransform: 'uppercase',
+                        margin: '0 2px 7px' }}>{name}</div>
+          {byPerson[name].map(r => (
+            <div key={r.id} onClick={() => setEdit(r)} style={{
+              background: T.card, borderRadius: 16, padding: '12px 14px', marginBottom: 8,
+              cursor: 'pointer', opacity: r.active ? 1 : 0.6
+            }}>
+              <div style={{ fontSize: 13.5, color: T.text, lineHeight: 1.4 }}>{r.description}</div>
+              <div style={{ fontSize: 11.5, color: T.faint, marginTop: 4, lineHeight: 1.4 }}>
+                {r.repeatText}{r.active ? (r.next ? ' · next ' + r.next : '') : ' · paused'}
+                {r.lastStatus === 'open' && <span style={{ color: T.amber }}> · last copy still open</span>}
+                {r.lastStatus === 'done' && <span style={{ color: T.green }}> · last copy done</span>}
+              </div>
+              {r.lastStatus === 'done' && r.lastNote && (
+                <div style={{ fontSize: 11.5, color: T.sub, marginTop: 4, lineHeight: 1.4 }}>{r.lastNote}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+      <button onClick={() => setEdit({})} style={{ ...btn(true), width: '100%', padding: '13px 0', fontSize: 14 }}>
+        + Routine job
+      </button>
+      {edit && <RoutineForm routine={edit} emps={emps} online={online}
+                            onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); }} />}
+    </>
+  );
+}
+
+function RoutineForm({ routine, emps, online, onClose, onSaved }) {
+  const isNew = !routine.id;
+  const people = emps.map(e => String(e.Name || e.name || '').trim()).filter(Boolean);
+  const [f, setF] = React.useState({
+    description: routine.description || '',
+    assignee: routine.assignee || '',
+    repeat: routine.repeat || 'Daily',
+    days: routine.repeat === 'Weekly' ? String(routine.days || '').split(/[,\s]+/).filter(Boolean) : [],
+    dom: routine.repeat === 'Monthly' ? String(routine.days || '1') : '1',
+    priority: routine.priority || 'Medium'
+  });
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  // From the latest state, not this render's copy: two quick taps on Mon and
+  // Thu kept only Thu when this read f.days.
+  const toggleDay = d => setF(p => ({ ...p, days: p.days.includes(d) ? p.days.filter(x => x !== d) : [...p.days, d] }));
+
+  // Routines are shared settings, so they are saved only with signal.
+  const send = async (name, ...args) => {
+    if (!online) { setErr('Needs signal — routine jobs are not saved on the phone.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const r = await call(name, ...args);
+      if (!r || r.success === false) { setErr((r && r.error) || 'Could not save.'); return; }
+      onSaved();
+    } catch (e) { setErr(e.message || String(e)); }
+    finally { setBusy(false); }
+  };
+  const save = () => send('saveRoutine', {
+    id: routine.id, description: f.description, assignee: f.assignee, repeat: f.repeat, priority: f.priority,
+    days: f.repeat === 'Weekly' ? f.days : f.repeat === 'Monthly' ? f.dom : ''
+  });
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontSize: 18, color: T.text, marginBottom: 14 }}>{isNew ? 'New routine job' : 'Routine job'}</div>
+      <textarea autoFocus={isNew} style={{ ...field, minHeight: 72, resize: 'vertical' }}
+                placeholder="e.g. Check GeM for new bids and mark each GO or NO-GO"
+                value={f.description} onChange={e => set('description', e.target.value)} />
+      <div style={label}>Who does it</div>
+      <select value={f.assignee} onChange={e => set('assignee', e.target.value)} style={field}>
+        <option value="">Choose a person</option>
+        {people.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+      <div style={label}>How often</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {['Daily', 'Weekly', 'Monthly'].map(x => (
+          <Pill key={x} on={f.repeat === x} onClick={() => set('repeat', x)}>
+            {x === 'Daily' ? 'Every working day' : x}
+          </Pill>
+        ))}
+      </div>
+      {f.repeat === 'Weekly' && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {WEEK.map(d => <Pill key={d} on={f.days.includes(d)} onClick={() => toggleDay(d)}>{d}</Pill>)}
+        </div>
+      )}
+      {f.repeat === 'Monthly' && (
+        <>
+          <div style={label}>On day</div>
+          <select value={f.dom} onChange={e => set('dom', e.target.value)} style={field}>
+            {Array.from({ length: 28 }, (_, i) => String(i + 1)).map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <div style={{ fontSize: 11.5, color: T.faint, margin: '-6px 2px 12px' }}>
+            If that day is a Sunday or a holiday, it comes on the next working day.
+          </div>
+        </>
+      )}
+      <div style={label}>Priority</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {['High', 'Medium', 'Low'].map(p => <Pill key={p} on={f.priority === p} onClick={() => set('priority', p)}>{p}</Pill>)}
+      </div>
+      {err && <div style={{ fontSize: 12.5, color: T.red, margin: '0 2px 10px' }}>{err}</div>}
+      <button disabled={busy} onClick={save}
+              style={{ ...btn(true, busy), width: '100%', padding: '13px 0', fontSize: 14 }}>
+        {busy ? 'Saving…' : isNew ? 'Start this routine' : 'Save changes'}
+      </button>
+      {!isNew && (
+        <button disabled={busy} onClick={() => send('setRoutineActive', routine.id, !routine.active)}
+                style={{ ...btn(false, busy), width: '100%', padding: '13px 0', fontSize: 14, marginTop: 8 }}>
+          {routine.active ? 'Pause it' : 'Resume it'}
+        </button>
+      )}
+      {isNew && (
+        <div style={{ fontSize: 11.5, color: T.faint, margin: '10px 2px 0', lineHeight: 1.5 }}>
+          The first copy is made on its next working day and arrives in their 10:30 list.
+        </div>
+      )}
+    </Sheet>
   );
 }
 
@@ -450,6 +614,7 @@ function TaskList({ list, done, isMgr, showWho, me, busy, onOpen, onGotIt, empty
             {done && <span>Closed {String(t.ClosureDate || '').slice(0, 10)}</span>}
             {norm(t.Priority) === 'high' && <span style={{ color: T.amber }}> · High</span>}
             {moves > 0 && !done && <span> · moved {moves}×</span>}
+            {norm(t.Category) === 'routine' && <span> · routine</span>}
             {showWho && <span> · {owner || 'nobody'}</span>}
             {ack && <span style={{ color: T.blue }}> · new</span>}
           </div>

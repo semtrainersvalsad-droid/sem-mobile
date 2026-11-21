@@ -312,10 +312,10 @@ export default function Today({ user, isMgr, online, onGoTab }) {
               )}
             </div>
           ))}
-          {(md.counts.noDateLeads > 0 || md.counts.noDateDocs > 0) && (
+          {/* Leads with no next call date are their own group above now. */}
+          {md.counts.noDateDocs > 0 && (
             <div style={{ fontSize: 11.5, color: T.faint, margin: '8px 2px 0', lineHeight: 1.5 }}>
-              {md.counts.noDateLeads > 0 && md.counts.noDateLeads + ' of your leads have no next call date. '}
-              {md.counts.noDateDocs > 0 && md.counts.noDateDocs + ' tender documents have no due date.'}
+              {md.counts.noDateDocs + ' tender documents have no due date.'}
             </div>
           )}
         </div>
